@@ -17,7 +17,8 @@ Denne plan er ordren til den agent, der bygger fabrikken (Codex eller Claude Cod
 | GitHub | `gh` CLI-login + Octokit (REST + GraphQL til Projects v2 og sub-issues) |
 | Codex | `codex app-server` over stdio (JSON-RPC/JSONL), Nikolajs eget ChatGPT Plus-login |
 | Daemon-API | Hono på `127.0.0.1:4712`: `GET /state`, `GET /events` (SSE), `POST /commands`. Bearer-token påkrævet |
-| Dashboard | Separat pakke `dashboard/`, kører i Docker. Tynd klient uden egen state, ingen frontend-build |
+| Dashboard | Separat pakke `dashboard/`, kører i en container under **OrbStack**. Tynd klient uden egen state, ingen frontend-build |
+| Container-runtime | OrbStack. Dashboardet nås på `https://dashboard.ai-factory.orb.local`. Docker Desktop understøttes som fallback |
 | Motor | Daemon, `codex app-server`, `gh` og worktrees kører **native** på macOS, aldrig i Docker (M9 undtaget) |
 | Arbejdstid | Døgnet rundt. Ingen kvote reserveres til Nikolaj |
 | Projekter | Projektagnostisk fra dag ét: `projects.yml` i fabrikken, `.factory/` i hvert projekt |
@@ -93,16 +94,17 @@ Hver milepæl er en eller flere PR'er. En milepæl er færdig, når **alle** acc
 
 ### M5b – Kontrolrummet (container)
 
-- Separat pakke `dashboard/` med egen `Dockerfile` (node:22-slim, non-root bruger) og `docker-compose.yml` i repo-roden.
+- Separat pakke `dashboard/` med egen `Dockerfile` (node:22-slim, non-root bruger) og `docker-compose.yml` i repo-roden med `name: ai-factory` og service-navnet `dashboard`, så OrbStack giver domænet `dashboard.ai-factory.orb.local`.
+- Dashboardet lytter på port 80 i containeren, så OrbStack-domænet virker uden portnummer. OrbStack sørger selv for HTTPS.
 - Dashboard som i mockuppen: status-pill + heartbeat + næste start, knapper (Pause/Genoptag, Nødstop, Skift runner), "Arbejder på nu" med trin og iteration, to kvotemålere (5h og uge, pacing-budget), kø med op-knap og Hold, "Venter på dig", "I dag", log, projektvælger + fokus-knap.
 - To tilstande via `FACTORY_MODE`:
-  - `direct` (default): `FACTORY_API_URL=http://host.docker.internal:4712` + `FACTORY_API_TOKEN`. Live via SSE.
+  - `direct` (default): `FACTORY_API_URL=http://host.orb.internal:4712` + `FACTORY_API_TOKEN`. Live via SSE. (`host.docker.internal` virker også og bruges på Docker Desktop.)
   - `github`: læser "Factory Status"-issuet og sender kommandoer som `/factory`-kommentarer. Kræver `GITHUB_TOKEN` med adgang til fabrikkens repo. Op til 1 min forsinkelse. Kan køre hvor som helst (NAS, sky).
 - Dashboardet viser tydeligt, hvilken tilstand det kører i, og hvor gammel den viste status er.
-- Dashboardet publiceres på `127.0.0.1:4711` i compose (ikke `0.0.0.0`).
-- Verificér, at containeren når en service bundet til værtens `127.0.0.1` via `host.docker.internal` på Docker Desktop. Gør den ikke, binder daemonen også til Docker-broen, stadig med token. Dokumentér valget.
+- Ingen `ports:` i compose under OrbStack: domænet er nok. En valgfri compose-profil `docker-desktop` publicerer på `127.0.0.1:4711` (aldrig `0.0.0.0`).
+- Verificér, at containeren når daemonen bundet til værtens `127.0.0.1` via `host.orb.internal`. Gør den ikke, binder daemonen også til containernetværkets gateway, stadig med token. Dokumentér valget.
 
-**Accept:** `docker compose up dashboard` giver et kørende kontrolrum i `direct`-tilstand mod en native daemon. Alle knapper har samme effekt som deres ChatOps-kommando. Samme image virker i `github`-tilstand uden adgang til daemonen.
+**Accept:** `docker compose up dashboard` giver et kørende kontrolrum på `https://dashboard.ai-factory.orb.local` i `direct`-tilstand mod en native daemon. Alle knapper har samme effekt som deres ChatOps-kommando. Samme image virker i `github`-tilstand uden adgang til daemonen.
 
 ### M6 – Flere projekter og agent-lag
 

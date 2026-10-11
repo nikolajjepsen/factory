@@ -27,4 +27,4 @@ Fortsæt milepæl for milepæl. Efter M3 kan fabrikken begynde at tage sine egne
 
 ## Arkitektur i én linje
 
-Daemonen (motoren) kører native på Mac'en, hvor Codex-loginet bor. Kontrolrummet kører i Docker og taler med daemonens API (`direct`) eller kun med GitHub (`github`).
+Daemonen (motoren) kører native på Mac'en, hvor Codex-loginet bor. Kontrolrummet kører i en container under OrbStack (`https://dashboard.ai-factory.orb.local`) og taler med daemonens API (`direct`) eller kun med GitHub (`github`).
