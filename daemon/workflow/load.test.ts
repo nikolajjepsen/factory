@@ -8,10 +8,10 @@ import { AgentLibrary, checkReferences } from './load.js';
 const baselineDir = join(factoryRoot, 'agents', 'baseline');
 
 describe('baseline workflows', () => {
-  it('are feature, bugfix and chore, all valid with existing agents and rubrics', async () => {
+  it('are feature, bugfix, chore and idea, all valid with existing agents and rubrics', async () => {
     const library = new AgentLibrary(baselineDir);
     const workflows = await library.loadWorkflows();
-    expect([...workflows.keys()].sort()).toEqual(['bugfix', 'chore', 'feature']);
+    expect([...workflows.keys()].sort()).toEqual(['bugfix', 'chore', 'feature', 'idea']);
     for (const workflow of workflows.values()) {
       expect(checkReferences(workflow, library, ['codex'])).toEqual([]);
     }
@@ -54,6 +54,22 @@ describe('AgentLibrary', () => {
     expect(library.hasAgent('../secrets')).toBe(false);
     expect(library.rubricPath('../../etc/passwd.md')).toBeUndefined();
     await expect(library.loadAgent('nobody')).rejects.toThrow(/no agent file for "nobody"/);
+  });
+
+  it('finds the templates of the product department agents', async () => {
+    const library = new AgentLibrary(baselineDir);
+    for (const role of ['analyst', 'spec', 'planner']) {
+      const agent = await library.loadAgent(role);
+      expect(agent.templates.length).toBeGreaterThan(0);
+      for (const name of agent.templates)
+        await expect(library.loadTemplate(name)).resolves.toBeTruthy();
+    }
+    await expect(library.loadTemplate('../secrets')).rejects.toThrow(/not found/);
+  });
+
+  it('lets a project override a template', async () => {
+    const library = await projectWith({ 'templates/spec.md': '# Projektets spec' });
+    expect(await library.loadTemplate('spec')).toBe('# Projektets spec');
   });
 
   it('loads the baseline implementer shipped with the factory', async () => {

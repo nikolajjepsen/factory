@@ -30,6 +30,17 @@ export class FakeGitHub implements GitHub {
   issueBodies = new Map<number, string>();
   createdIssues: { repo: string; title: string; body: string; number: number }[] = [];
   pinned: number[] = [];
+  /** Issues made by createSubIssue, with their parent and the REST ids they are blocked by. */
+  subIssues: {
+    repo: string;
+    parent: number;
+    number: number;
+    id: number;
+    title: string;
+    body: string;
+    labels: string[];
+    blockedBy: number[];
+  }[] = [];
 
   constructor(issue?: Partial<Issue>) {
     this.setIssue({
@@ -132,6 +143,22 @@ export class FakeGitHub implements GitHub {
     this.createdIssues.push({ repo, title, body, number });
     this.issueBodies.set(number, body);
     return Promise.resolve(number);
+  }
+  createSubIssue(
+    repo: string,
+    parent: number,
+    issue: { title: string; body: string; labels: string[] },
+  ) {
+    const number = 200 + this.subIssues.length;
+    const id = 9000 + number;
+    this.subIssues.push({ repo, parent, number, id, ...issue, blockedBy: [] });
+    return Promise.resolve({ number, id, nodeId: `I_${String(number)}` });
+  }
+  addBlockedBy(_repo: string, issue: number, blockerId: number) {
+    const sub = this.subIssues.find((s) => s.number === issue);
+    if (!sub) return Promise.reject(new Error(`no sub-issue #${String(issue)}`));
+    sub.blockedBy.push(blockerId);
+    return Promise.resolve();
   }
   updateIssueBody(_repo: string, issue: number, body: string) {
     this.issueBodies.set(issue, body);

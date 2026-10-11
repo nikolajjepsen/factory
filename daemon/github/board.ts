@@ -112,6 +112,8 @@ export interface Board {
   setStatus(itemId: string, status: string): Promise<void>;
   /** Moves an item right after another, or to the top with null. */
   moveAfter(itemId: string, afterItemId: string | null): Promise<void>;
+  /** Adds an issue (by node id) to the board, at the bottom, in the given status column. */
+  add(contentId: string, status: string): Promise<void>;
 }
 
 export function parseBoardPage(data: unknown): { snapshot: BoardSnapshot; next: string | null } {
@@ -187,6 +189,20 @@ export class GraphQLBoard implements Board {
       }`,
       { project: snapshot.projectId, item: itemId, after: afterItemId },
     );
+  }
+
+  async add(contentId: string, status: string): Promise<void> {
+    const snapshot = this.#snapshot ?? (await this.read());
+    const data: unknown = await this.octokit.graphql(
+      `mutation($project: ID!, $content: ID!) {
+        addProjectV2ItemById(input: { projectId: $project, contentId: $content }) { item { id } }
+      }`,
+      { project: snapshot.projectId, content: contentId },
+    );
+    const itemId = z
+      .object({ addProjectV2ItemById: z.object({ item: z.object({ id: z.string() }) }) })
+      .parse(data).addProjectV2ItemById.item.id;
+    await this.setStatus(itemId, status);
   }
 
   async setStatus(itemId: string, status: string): Promise<void> {

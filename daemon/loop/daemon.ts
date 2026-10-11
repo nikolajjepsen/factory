@@ -168,9 +168,14 @@ export class Daemon {
       const url = run.pr?.url ?? this.#itemFor(run)?.url;
       const base = { project: run.project, issue: run.issue, ...(url && { url }) };
       if (run.status === 'waiting')
-        waiting.push({ ...base, kind: 'needs-you', text: 'venter på din godkendelse' });
+        waiting.push({
+          ...base,
+          kind: 'needs-you',
+          text: run.reason ?? 'venter på din godkendelse',
+        });
       else if (run.status === 'blocked')
         waiting.push({ ...base, kind: 'blocked', text: run.reason ?? 'blokeret' });
+      else if (run.outcome === 'planned') continue;
       else if (new Date(run.updatedAt).getTime() >= recent) {
         waiting.push({ ...base, kind: 'ready-to-merge', text: 'grøn og reviewet' });
       }
@@ -669,7 +674,8 @@ export class Daemon {
     this.#setMode('running');
     try {
       const after = await this.#deps.engine.advance(run, controller.signal);
-      if (after.status === 'done')
+      // A planned epic stays in progress while its sub-issues are built.
+      if (after.status === 'done' && after.outcome !== 'planned')
         await this.#moveCard(after.project, after.issue, this.#deps.config.board.status.review);
     } catch (error) {
       if (!(error instanceof QuotaExhaustedError)) throw error;

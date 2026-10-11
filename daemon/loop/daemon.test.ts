@@ -30,6 +30,7 @@ const config = FactoryConfig.parse({
 
 class FakeBoard implements Board {
   moves: { itemId: string; status: string }[] = [];
+  added: { contentId: string; status: string }[] = [];
   constructor(public items: BoardItem[]) {}
   read(): Promise<BoardSnapshot> {
     return Promise.resolve({
@@ -45,6 +46,10 @@ class FakeBoard implements Board {
     this.items = this.items.filter((i) => i !== item);
     const at = afterItemId === null ? 0 : this.items.findIndex((i) => i.itemId === afterItemId) + 1;
     this.items.splice(at, 0, item);
+    return Promise.resolve();
+  }
+  add(contentId: string, status: string): Promise<void> {
+    this.added.push({ contentId, status });
     return Promise.resolve();
   }
   setStatus(itemId: string, status: string): Promise<void> {
@@ -628,6 +633,36 @@ describe('Daemon: several projects', () => {
     const result = await h.daemon.execute({ command: 'disable', project: 'nope' });
     expect(result).toMatchObject({ reply: true });
     expect(result.text).toContain('ukendt projekt "nope"');
+  });
+});
+
+describe('Daemon: the idea workflow', () => {
+  it('shows what an idea waits for, and leaves the planned epic in progress', async () => {
+    const h = await harness();
+    h.github.issue = { ...h.github.issue, labels: [{ name: 'idea' }] };
+    h.script.script(
+      { output: { status: 'done', summary: 'Brief.', comment: '## Decision Brief' } },
+      {},
+      {
+        output: {
+          status: 'done',
+          summary: 'Plan.',
+          issues: [{ key: 'a', title: 'A', body: 'B', area: 'gallery', dependsOn: [] }],
+        },
+      },
+    );
+    await h.tickUntilIdle();
+    expect(h.daemon.state().waitingForYou).toEqual([
+      expect.objectContaining({ issue: 12, kind: 'needs-you', text: 'venter på dit svar' }),
+    ]);
+    await h.daemon.execute({ command: 'approve', issue: 12, project: 'demo' });
+    await h.tickUntilIdle();
+    expect(h.daemon.state().waitingForYou[0]?.text).toBe('venter på, at du merger PR’en');
+    h.github.mergedPrs.add(5);
+    await h.tickUntilIdle();
+    expect(h.store.findLatestRun('demo', 12)).toMatchObject({ status: 'done', outcome: 'planned' });
+    expect(h.board.moves).toEqual([{ itemId: 'item-12', status: 'In progress' }]);
+    expect(h.daemon.state().waitingForYou).toEqual([]);
   });
 });
 

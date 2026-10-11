@@ -1,0 +1,17 @@
+description: En idé bliver til en Decision Brief, en spec og en epic med sub-issues.
+stages:
+  - id: analysis
+    agent: analyst
+    output: comment
+    gates:
+      - human: answer
+    on_fail: [retry_with_feedback x2, escalate: human]
+  - id: spec
+    agent: spec
+    gates:
+      - human: merge
+    on_fail: [retry_with_feedback x3, escalate: human]
+  - id: plan
+    agent: planner
+    output: issues
+    on_fail: [retry_with_feedback x2, escalate: human]

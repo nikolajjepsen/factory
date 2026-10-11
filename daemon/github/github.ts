@@ -84,6 +84,15 @@ const RawComment = z.object({
   html_url: z.string(),
 });
 
+/** An issue the factory created: its number, REST id (for sub-issues and dependencies) and node id. */
+export interface CreatedIssue {
+  number: number;
+  id: number;
+  nodeId: string;
+}
+
+const RawCreatedIssue = z.object({ number: z.number(), id: z.number(), node_id: z.string() });
+
 export interface CreatePullRequest {
   head: string;
   base: string;
@@ -118,6 +127,14 @@ export interface GitHub {
     title: string,
   ): Promise<{ number: number; body: string } | undefined>;
   createIssue(repo: string, title: string, body: string): Promise<number>;
+  /** Creates an issue with labels and links it as a sub-issue of `parent`. */
+  createSubIssue(
+    repo: string,
+    parent: number,
+    issue: { title: string; body: string; labels: string[] },
+  ): Promise<CreatedIssue>;
+  /** Marks `issue` as blocked by the issue with REST id `blockerId`. */
+  addBlockedBy(repo: string, issue: number, blockerId: number): Promise<void>;
   updateIssueBody(repo: string, issue: number, body: string): Promise<void>;
   pinIssue(repo: string, issue: number): Promise<void>;
 }
@@ -304,6 +321,29 @@ export class OctokitGitHub implements GitHub {
   async createIssue(repo: string, title: string, body: string): Promise<number> {
     const { data } = await this.octokit.rest.issues.create({ ...splitRepo(repo), title, body });
     return data.number;
+  }
+
+  async createSubIssue(
+    repo: string,
+    parent: number,
+    issue: { title: string; body: string; labels: string[] },
+  ): Promise<CreatedIssue> {
+    const { data } = await this.octokit.rest.issues.create({ ...splitRepo(repo), ...issue });
+    const created = RawCreatedIssue.parse(data);
+    await this.octokit.rest.issues.addSubIssue({
+      ...splitRepo(repo),
+      issue_number: parent,
+      sub_issue_id: created.id,
+    });
+    return { number: created.number, id: created.id, nodeId: created.node_id };
+  }
+
+  async addBlockedBy(repo: string, issue: number, blockerId: number): Promise<void> {
+    await this.octokit.rest.issues.addBlockedByDependency({
+      ...splitRepo(repo),
+      issue_number: issue,
+      issue_id: blockerId,
+    });
   }
 
   async updateIssueBody(repo: string, issue: number, body: string): Promise<void> {

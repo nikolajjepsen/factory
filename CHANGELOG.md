@@ -4,6 +4,16 @@
 
 ### Tilføjet
 
+- M7: Produktafdelingen. Workflowet `idea` (label `idea`) går fra idé til Decision Brief (analyst), til spec-PR med `specs/<feature>.md` og ADR'er (spec) og til sub-issues med afhængigheder og `area:`-labels i Ready (planner). Idé-issuet bliver epic'en. Se "Produktafdelingen" i `docs/workflows.md`.
+- M7: Stage-nøglen `output: pr | comment | issues` og gaterne `human: answer` (ejerens første kommentar er svaret) og `human: merge` (kørslens PR er merget). Hver stages output gives videre til de senere stages.
+- M7: Skabelonerne `decision-brief`, `spec`, `adr` og `issue` i `templates/`. Agentfiler henter dem med `templates:`, og et projekt kan overskrive dem i `.factory/templates/`.
+- M7: Kontrolrummet og statusissuet viser, hvad en kørsel venter på (svar, merge eller godkendelse). En planlagt epic flyttes ikke til "In review".
+
+### Rettet
+
+- En parkeret human-gate, der bestod, blev evalueret igen i samme trin. Ved `approve_pr` kunne et ældre review dermed tælle igen. Nu bruges den første evaluering.
+- Et review, der bad om ændringer, fik også den næste turn til at fejle, fordi kørslen glemte, hvornår den sidst ventede. Human-gates tæller nu kun svar efter den seneste turn.
+
 - M6: Tænd/sluk pr. projekt med `/factory enable <projekt>` og `/factory disable <projekt>` og en kontakt ved hvert projekt i kontrolrummet. Et slukket projekt får ingen nye trin, og daemonen går videre med de andre. Indstillingen gemmes i daemonens database. `projects` i tilstanden har `enabled`.
 - M6: Agent-laget. Agentfiler har `extends`, `scope.labels`, `context` og `runner`. En stage og en review-gate får den projektagent, hvis `scope.labels` matcher flest af issuets labels, ellers projektets fil for rollen, ellers baseline. Loggen og forsøgsloggen viser den valgte agent og grunden. Se `docs/agents.md`.
 - M6: `<projekt>/.factory/project.yml` med `ci` (tjek-kommandoen, som kommer med i agentens prompt) og `runners` pr. rolle. Runneren vælges i rækkefølgen override, stage, agentfil, `project.yml`, `default_runner`.

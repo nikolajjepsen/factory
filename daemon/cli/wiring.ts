@@ -7,7 +7,7 @@ import { createApi, listen } from '../api/server.js';
 import { loadOrCreateToken } from '../api/token.js';
 import { loadFactoryConfig } from '../config/factoryConfig.js';
 import { factoryHome, factoryRoot, loadProject, loadProjects } from '../config/projects.js';
-import { GraphQLBoard } from '../github/board.js';
+import { type Board, GraphQLBoard } from '../github/board.js';
 import { OctokitGitHub, octokitFromGhCli } from '../github/github.js';
 import { Daemon } from '../loop/daemon.js';
 import {
@@ -94,9 +94,14 @@ type EngineDepsSubset = Pick<
   'github' | 'store' | 'runners' | 'onEvent'
 >;
 
-function engineFor(deps: EngineDepsSubset, config: FactoryConfigValue): WorkflowEngine {
+function engineFor(
+  deps: EngineDepsSubset,
+  config: FactoryConfigValue,
+  board: Board,
+): WorkflowEngine {
   return new WorkflowEngine({
     ...deps,
+    board: { addToReady: (contentId) => board.add(contentId, config.board.status.ready) },
     defaultRunner: config.default_runner,
     worktrees: worktrees(),
     project: (name) => loadProject(projectsFile, name),
@@ -120,11 +125,13 @@ export async function runWorkflow(
   signal: AbortSignal,
 ): Promise<RunState> {
   const config = await loadFactoryConfig(factoryConfigFile);
-  const github = await OctokitGitHub.fromGhCli();
+  const octokit = await octokitFromGhCli();
+  const github = new OctokitGitHub(octokit);
+  const board = new GraphQLBoard(octokit, config.board.owner, config.board.number);
   const store = openStore();
   try {
     return await withRunners(options, async (runners) => {
-      const engine = engineFor({ github, store, runners, onEvent }, config);
+      const engine = engineFor({ github, store, runners, onEvent }, config, board);
       const run = await engine.start(
         options.project,
         options.issue,
@@ -148,14 +155,16 @@ export async function runDaemon(options: { once: boolean }, signal: AbortSignal)
       const quota = new CodexQuotaSource({ client, log });
       // The engine reports to the daemon, which is built after it.
       const sink: { daemon?: Daemon } = {};
+      const board = new GraphQLBoard(octokit, config.board.owner, config.board.number);
       const engine = engineFor(
         { github, store, runners, onEvent: (event) => sink.daemon?.handleEngineEvent(event) },
         config,
+        board,
       );
       const daemon = new Daemon({
         config,
         github,
-        board: new GraphQLBoard(octokit, config.board.owner, config.board.number),
+        board,
         store,
         engine,
         projects: () => loadProjects(projectsFile),

@@ -21,6 +21,10 @@ export interface PromptParts {
   context?: { path: string; text: string }[];
   /** The project's check command from `.factory/project.yml`. */
   checks?: string;
+  /** What earlier stages of the workflow produced, e.g. a Decision Brief and the owner's answer. */
+  handoff?: { title: string; text: string }[];
+  /** Templates the agent file asks for. */
+  templates?: { name: string; text: string }[];
   /** Feedback from earlier attempts (failed gates, review comments), oldest first. */
   feedback?: string[];
   /** What this step must do, when it differs from solving the whole issue (stages, phases). */
@@ -45,6 +49,8 @@ export const AgentFrontmatter = z.strictObject({
   scope: z.strictObject({ labels: z.array(z.string().min(1)).min(1) }).optional(),
   /** Files in the project that go into the prompt, e.g. docs/domain.md. */
   context: z.array(ProjectPath).optional(),
+  /** Templates from `templates/` (or the project's `.factory/templates/`), e.g. decision-brief. */
+  templates: z.array(z.string().regex(AGENT_NAME, 'must be a template name like spec')).optional(),
   runner: z.string().min(1).optional(),
 });
 export type AgentFrontmatter = z.infer<typeof AgentFrontmatter>;
@@ -90,6 +96,13 @@ export function buildPrompt(parts: PromptParts): string {
   if (parts.agentsMd) sections.push(`# Project rules (AGENTS.md)\n\n${parts.agentsMd.trim()}`);
   for (const file of parts.context ?? []) {
     sections.push(`# Context (${file.path})\n\n${file.text.trim()}`);
+  }
+  if (parts.handoff && parts.handoff.length > 0) {
+    const items = parts.handoff.map((h) => `## ${h.title}\n\n${h.text.trim()}`);
+    sections.push(`# Earlier in this workflow\n\n${items.join('\n\n')}`);
+  }
+  for (const template of parts.templates ?? []) {
+    sections.push(`# Template: ${template.name}\n\n${template.text.trim()}`);
   }
   if (parts.checks) {
     sections.push(

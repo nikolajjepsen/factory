@@ -168,8 +168,9 @@ stages:
 
 ### M7 – Produktafdelingen
 
-- Roller: analyst (issue `idea` → Decision Brief-kommentar), spec (svar → PR med `specs/<feature>.md` + ADR'er), planner (merget spec → epic + sub-issues med afhængigheder og `area:`-labels, sat til "Klar").
-- Skabeloner i `templates/`: decision-brief, spec, adr, issue.
+- Workflowet `idea` (label `idea`, kortet lægges i "Klar" som alle andre): analyst (Decision Brief-kommentar, venter på Nikolajs svar) → spec (PR med `specs/<feature>.md` + ADR'er, venter på merge) → planner (sub-issues med afhængigheder og `area:`-labels, sat til "Klar"). Idé-issuet bliver selv epic'en.
+- Nyt i ordforrådet: stage-nøglen `output: pr | comment | issues`, gaten `human: answer` (Nikolajs første kommentar efter briefen er svaret) og gaten `human: merge` (kørslens PR er merget). Hver stages output gives videre til de næste.
+- Skabeloner i `templates/`: decision-brief, spec, adr, issue. Agentfiler henter dem med `templates:`, og et projekt kan overskrive dem i `.factory/templates/`.
 - Analysten læser `docs/vision.md` og spørger kun om dyre eller smagsprægede valg. Resten bliver til antagelser.
 
 **Accept:** Issue "Jeg vil have et galleri" ender som epic med sub-issues efter én runde svar fra Nikolaj.

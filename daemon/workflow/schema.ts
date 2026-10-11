@@ -4,6 +4,15 @@ import { z } from 'zod';
 // and climbs an escalation ladder (`on_fail`) when a gate fails. See docs/workflows.md.
 
 export const STRATEGIES = ['direct', 'plan_then_code'] as const;
+/**
+ * What a stage's agent turn delivers. `pr`: code on the branch and a PR. `comment`: a read-only
+ * turn whose text is posted on the issue. `issues`: a read-only turn whose answer becomes
+ * sub-issues of the issue.
+ */
+export const OUTPUTS = ['pr', 'comment', 'issues'] as const;
+export type Output = (typeof OUTPUTS)[number];
+export const HUMAN_MODES = ['always', 'approve_pr', 'answer', 'merge'] as const;
+export type HumanMode = (typeof HUMAN_MODES)[number];
 export type Strategy = (typeof STRATEGIES)[number];
 export type Phase = 'plan' | 'code';
 
@@ -20,14 +29,14 @@ const ReviewGate = z.object({
 const CiGate = z.object({ on: Phase.default('code') }).default({ on: 'code' });
 
 const HumanGate = z.union([
-  z.enum(['always', 'approve_pr']).transform((mode) => ({ mode, on: 'code' as Phase })),
-  z.object({ mode: z.enum(['always', 'approve_pr']), on: Phase.default('code') }),
+  z.enum(HUMAN_MODES).transform((mode) => ({ mode, on: 'code' as Phase })),
+  z.object({ mode: z.enum(HUMAN_MODES), on: Phase.default('code') }),
 ]);
 
 export type Gate =
   | { kind: 'ci'; on: Phase }
   | { kind: 'review'; agent: string; rubric: string; minScore: number; on: Phase }
-  | { kind: 'human'; mode: 'always' | 'approve_pr'; on: Phase };
+  | { kind: 'human'; mode: HumanMode; on: Phase };
 
 /**
  * Parses a one-key mapping such as `{ review: {...} }` by looking at the key first, so errors name
@@ -64,7 +73,8 @@ function keyed<T>(
   });
 }
 
-const GATE_HINT = 'Use ci, review: { agent, rubric, min_score } or human: always | approve_pr.';
+const GATE_HINT =
+  'Use ci, review: { agent, rubric, min_score } or human: always | approve_pr | answer | merge.';
 
 const GateInput = keyed<Gate>(
   'gate',
@@ -129,6 +139,7 @@ const StageInput = z.strictObject({
   id: Name,
   agent: Name,
   strategy: z.enum(STRATEGIES).default('direct'),
+  output: z.enum(OUTPUTS).default('pr'),
   runner: Name.optional(),
   /** Extra instructions for this stage, added to the agent's prompt. */
   instructions: z.string().optional(),
@@ -143,6 +154,7 @@ export interface Stage {
   id: string;
   agent: string;
   strategy: Strategy;
+  output: Output;
   runner?: string;
   instructions?: string;
   gates: Gate[];
@@ -165,7 +177,24 @@ export const WorkflowInput = z
         });
       }
       seen.add(stage.id);
+      if (stage.output !== 'pr' && stage.strategy !== 'direct') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['stages', i, 'strategy'],
+          message: `"output: ${stage.output}" needs "strategy: direct"`,
+        });
+      }
       stage.gates.forEach((gate, g) => {
+        const needsPr =
+          gate.kind === 'ci' ||
+          (gate.kind === 'human' && (gate.mode === 'approve_pr' || gate.mode === 'merge'));
+        if (needsPr && stage.output !== 'pr') {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['stages', i, 'gates', g],
+            message: `${describeGate(gate)} needs a PR, so the stage must have "output: pr"`,
+          });
+        }
         if (gate.on === 'plan' && stage.strategy !== 'plan_then_code') {
           ctx.addIssue({
             code: 'custom',
@@ -199,6 +228,7 @@ export function parseWorkflow(id: string, source: string, raw: unknown): Workflo
       id: s.id,
       agent: s.agent,
       strategy: s.strategy,
+      output: s.output,
       gates: s.gates,
       onFail: s.on_fail,
       ...(s.runner !== undefined && { runner: s.runner }),

@@ -21,6 +21,7 @@ stages:
         id: 'implement',
         agent: 'implementer',
         strategy: 'direct',
+        output: 'pr',
         gates: [
           { kind: 'ci', on: 'code' },
           { kind: 'review', agent: 'reviewer', rubric: 'rubrics/code.md', minScore: 7, on: 'code' },
@@ -75,6 +76,7 @@ stages:
       id: 'b',
       agent: 'docs',
       strategy: 'direct',
+      output: 'pr',
       gates: [],
       onFail: [{ kind: 'escalate', to: 'human' }],
     });
@@ -101,6 +103,22 @@ stages:
     ],
     ['bad name', 'stages:\n  - id: Implement\n    agent: x', /kebab-case/],
     [
+      'a CI gate on a comment stage',
+      'stages:\n  - id: a\n    agent: x\n    output: comment\n    gates: [ci]',
+      /ci needs a PR, so the stage must have "output: pr"/,
+    ],
+    [
+      'merge on an issues stage',
+      'stages:\n  - id: a\n    agent: x\n    output: issues\n    gates: [{ human: merge }]',
+      /human: merge needs a PR/,
+    ],
+    [
+      'plan_then_code on a comment stage',
+      'stages:\n  - id: a\n    agent: x\n    output: comment\n    strategy: plan_then_code',
+      /"output: comment" needs "strategy: direct"/,
+    ],
+    ['an unknown output', 'stages:\n  - id: a\n    agent: x\n    output: email', /output/],
+    [
       'score out of range',
       'stages:\n  - id: a\n    agent: x\n    gates: [{ review: { agent: r, rubric: r.md, min_score: 11 } }]',
       /min_score/,
@@ -109,6 +127,18 @@ stages:
     expect(() => parse(yaml)).toThrow(WorkflowError);
     expect(() => parse(yaml)).toThrow(message);
     expect(() => parse(yaml)).toThrow(/^test\.yml is invalid/);
+  });
+});
+
+describe('output and the human gates of the idea workflow', () => {
+  it('parses output and human: answer | merge', () => {
+    const workflow = parse(
+      'stages:\n  - id: a\n    agent: analyst\n    output: comment\n    gates: [{ human: answer }]\n  - id: s\n    agent: spec\n    gates: [{ human: merge }]',
+    );
+    expect(workflow.stages.map((st) => [st.output, st.gates])).toEqual([
+      ['comment', [{ kind: 'human', mode: 'answer', on: 'code' }]],
+      ['pr', [{ kind: 'human', mode: 'merge', on: 'code' }]],
+    ]);
   });
 });
 

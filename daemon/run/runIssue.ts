@@ -102,12 +102,12 @@ export async function runIssue(
 export function pullRequestBody(
   issue: Pick<Issue, 'number'>,
   report: Pick<RunReport, 'summary' | 'testsRun'>,
-  meta: { role: string; runner: string },
+  meta: { role: string; runner: string; closes?: boolean },
 ): string {
   const tests =
     report.testsRun.length > 0 ? report.testsRun.map((t) => `- \`${t}\``).join('\n') : '- (ingen)';
   return [
-    `Closes #${String(issue.number)}`,
+    `${meta.closes === false ? 'Refs' : 'Closes'} #${String(issue.number)}`,
     '',
     '## Opsummering',
     '',

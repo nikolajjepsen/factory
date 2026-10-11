@@ -36,12 +36,23 @@ export interface RunState {
   gateIndex: number;
   /** When the run started waiting on a human gate. */
   waitingSince?: string;
+  /** When the current phase's agent turn finished. Human gates only count answers after it. */
+  turnFinishedAt?: string;
   /** `openedAt` is unset for PRs opened before M5a. */
   pr?: { number: number; url: string; openedAt?: string };
   /** The last agent summary, for the PR body and notifications. */
   lastSummary?: string;
-  /** Why the run is blocked or stopped, in Danish. */
+  /** Why the run is blocked, stopped or waiting, in Danish. */
   reason?: string;
+  /**
+   * What earlier stages produced for later ones, oldest first: a Decision Brief, the owner's
+   * answer, a spec PR. Unlike `feedback`, it is kept from stage to stage.
+   */
+  handoff?: { title: string; text: string }[];
+  /** Sub-issues an `output: issues` stage created, by the planner's key, so a rerun skips them. */
+  created?: { key: string; number: number; id: number }[];
+  /** How a done run ended. Runs from before M7 have none and count as `ready-to-merge`. */
+  outcome?: 'ready-to-merge' | 'planned';
   createdAt: string;
   updatedAt: string;
 }

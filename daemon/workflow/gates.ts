@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CheckRun, GitHub } from '../github/github.js';
+import { type CheckRun, FACTORY_COMMENT_MARKER, type GitHub } from '../github/github.js';
 import {
   QuotaExhaustedError,
   type RunEvent,
@@ -12,7 +12,8 @@ import type { RunState } from './runState.js';
 import type { Gate } from './schema.js';
 
 export type GateResult =
-  | { kind: 'pass'; score?: number; feedback?: string; tokens?: TokenUsage }
+  /** `answer`: the owner's reply from a `human: answer` gate, handed to the next stages. */
+  | { kind: 'pass'; score?: number; feedback?: string; tokens?: TokenUsage; answer?: string }
   | { kind: 'fail'; feedback: string; score?: number; tokens?: TokenUsage }
   | { kind: 'pending' };
 
@@ -171,28 +172,63 @@ export interface HumanOptions {
   ownerLogin: string;
 }
 
-/** Passes on `/factory approve`, or for `approve_pr` on an approving review, after waiting began. */
+/**
+ * Waits for the owner, counting only what happened after the latest turn or the start of waiting:
+ * - every mode passes on `/factory approve` (for `answer`: follow the recommendations),
+ * - `approve_pr` and `merge` fail on a review that requests changes, with its text as feedback,
+ * - `approve_pr` passes on an approving review, `merge` once the run's PR is merged,
+ * - `answer` passes on the owner's first comment on the issue that is more than commands.
+ */
 export async function evaluateHuman(
   options: HumanOptions,
   gate: Extract<Gate, { kind: 'human' }>,
   repo: string,
   run: RunState,
 ): Promise<GateResult> {
-  if (options.store.takeDecision(run.project, run.issue, 'approve')) return { kind: 'pass' };
-  if (gate.mode === 'approve_pr' && run.pr) {
-    const since = run.waitingSince ?? run.createdAt;
-    const reviews = (await options.github.listReviews(repo, run.pr.number))
-      .filter((r) => r.user?.login === options.ownerLogin && (r.submitted_at ?? '') > since)
+  const { github, store, ownerLogin } = options;
+  // Only answers given after the latest turn count: a review that asked for changes must not
+  // fail the turn that made those changes.
+  const since = [run.waitingSince, run.turnFinishedAt, run.createdAt]
+    .filter((t): t is string => t !== undefined)
+    .reduce((a, b) => (a > b ? a : b));
+  if (store.takeDecision(run.project, run.issue, 'approve')) {
+    return gate.mode === 'answer'
+      ? { kind: 'pass', answer: `${ownerLogin} godkendte alle anbefalinger uden ændringer.` }
+      : { kind: 'pass' };
+  }
+  if (gate.mode === 'answer') {
+    const reply = (await github.listCommentsSince(repo, since))
+      .filter((c) => c.issueNumber === run.issue && c.author === ownerLogin)
+      .filter((c) => c.createdAt > since && !c.body.includes(FACTORY_COMMENT_MARKER))
+      .map((c) => withoutCommands(c.body))
+      .find((text) => text !== '');
+    return reply === undefined ? { kind: 'pending' } : { kind: 'pass', answer: reply };
+  }
+  if ((gate.mode === 'approve_pr' || gate.mode === 'merge') && run.pr) {
+    const reviews = (await github.listReviews(repo, run.pr.number))
+      .filter((r) => r.user?.login === ownerLogin && (r.submitted_at ?? '') > since)
       .filter((r) => r.state === 'APPROVED' || r.state === 'CHANGES_REQUESTED');
     const latest = reviews.at(-1);
-    if (latest?.state === 'APPROVED') return { kind: 'pass' };
     if (latest?.state === 'CHANGES_REQUESTED') {
       const body = latest.body?.trim() ?? '';
       return {
         kind: 'fail',
-        feedback: `${options.ownerLogin} bad om ændringer: ${body === '' ? '(ingen tekst)' : body}`,
+        feedback: `${ownerLogin} bad om ændringer: ${body === '' ? '(ingen tekst)' : body}`,
       };
+    }
+    if (gate.mode === 'approve_pr' && latest?.state === 'APPROVED') return { kind: 'pass' };
+    if (gate.mode === 'merge' && (await github.isPullRequestMerged(repo, run.pr.number))) {
+      return { kind: 'pass' };
     }
   }
   return { kind: 'pending' };
+}
+
+/** A comment without its `/factory` lines, trimmed. */
+function withoutCommands(body: string): string {
+  return body
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('/factory'))
+    .join('\n')
+    .trim();
 }

@@ -77,7 +77,7 @@ En løs idé bliver til issues, der er klar til at bygge, i fire trin. Nikolaj e
 1. **Idé.** Nikolaj opretter et issue med label `idea`, fx "Jeg vil have et galleri".
 2. **Decision Brief.** Analyst-agenten kommenterer med de få spørgsmål, der betyder noget (2–3 muligheder hver og en anbefaling), plus synlige antagelser for resten.
 3. **Spec.** Efter svarene laver spec-agenten en PR med `specs/<feature>.md` og eventuelle ADR'er. Spec'en reviewes og merges ligesom kode.
-4. **Plan.** Planner-agenten opretter en epic med sub-issues og afhængigheder og sætter dem til `factory:ready`.
+4. **Plan.** Planner-agenten deler spec'en op i sub-issues med afhængigheder og `area:`-labels. Fabrikken opretter dem under idé-issuet, som bliver epic'en, og lægger dem i Ready. Se "Produktafdelingen" i `docs/workflows.md`.
 
 **Regler for analysten**
 

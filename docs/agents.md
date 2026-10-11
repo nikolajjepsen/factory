@@ -15,6 +15,7 @@ extends: implementer          # valgfri: en anden agent, hvis tekst kommer førs
 scope:
   labels: [area:frontend]     # valgfri: gør filen til en domæneagent
 context: [docs/ui.md]         # valgfri: projektfiler, der kommer med i prompten
+templates: [spec]             # valgfri: skabeloner fra templates/
 runner: codex                 # valgfri: runneren for denne agent
 ---
 
@@ -28,6 +29,7 @@ Brug designsystemet i src/ui. Hver komponent skal have en story.
 | `extends` | Agenten arver forælderens tekst, og dens egen tekst lægges efter. `context` lægges sammen, og den nærmeste `runner` vinder. En projektfil, der extender sit eget navn (fx `implementer.md` med `extends: implementer`), arver fra baseline-filen. Cirkler er en fejl. |
 | `scope.labels` | Filen er en domæneagent for sin rolle. Den vælges, når issuet har mindst ét af labelsene. |
 | `context` | Stier relativt til projektets rod. De læses fra worktree'et og kommer med i prompten under `# Context (<sti>)`. En fil, der mangler, noteres i loggen og springes over. Stier uden for projektet afvises. |
+| `templates` | Skabeloner, der kommer med i prompten under `# Template: <navn>`. De slås op i `<projekt>/.factory/templates/<navn>.md` og derefter i fabrikkens `templates/<navn>.md`. |
 | `runner` | Runneren for denne agent (se "Runner" nedenfor). |
 
 Ukendte felter er en fejl, så en tastefejl ikke passerer stille. `factory workflow validate` tjekker alle projektets agentfiler.

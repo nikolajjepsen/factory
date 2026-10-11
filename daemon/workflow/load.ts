@@ -27,6 +27,8 @@ export interface ResolvedAgent {
   body: string;
   /** Project files for the prompt, ancestors first. */
   context: string[];
+  /** Template names, ancestors first. */
+  templates: string[];
   /** The nearest `runner` in the chain. */
   runner?: string;
   path: string;
@@ -47,6 +49,8 @@ export class AgentLibrary {
     readonly baselineDir: string,
     /** `<project>/.factory`, if the project has one. */
     readonly projectDir?: string,
+    /** `<factory>/templates` */
+    readonly templatesDir: string = join(baselineDir, '..', '..', 'templates'),
   ) {}
 
   #candidates(relative: string): string[] {
@@ -148,6 +152,7 @@ export class AgentLibrary {
       name,
       body: file.body,
       context: file.frontmatter.context ?? [],
+      templates: file.frontmatter.templates ?? [],
       ...(file.frontmatter.runner && { runner: file.frontmatter.runner }),
       path,
     };
@@ -163,6 +168,7 @@ export class AgentLibrary {
       role: parent.role,
       body: [parent.body, own.body].filter((b) => b !== '').join('\n\n'),
       context: [...new Set([...parent.context, ...own.context])],
+      templates: [...new Set([...parent.templates, ...own.templates])],
       ...((own.runner ?? parent.runner) && { runner: own.runner ?? parent.runner }),
     };
   }
@@ -185,6 +191,7 @@ export class AgentLibrary {
     for (const path of await this.#projectAgentPaths()) {
       try {
         const agent = await this.#resolve(path, []);
+        for (const template of agent.templates) await this.loadTemplate(template);
         if (agent.runner && !knownRunners.includes(agent.runner)) {
           problems.push(
             `${path}: unknown runner "${agent.runner}" (known: ${knownRunners.join(', ')})`,
@@ -213,6 +220,18 @@ export class AgentLibrary {
     if (!parsed.success)
       throw new WorkflowError(`${path} is invalid:\n${z.prettifyError(parsed.error)}`);
     return parsed.data;
+  }
+
+  /** A template from the project's `.factory/templates/`, else the factory's `templates/`. */
+  async loadTemplate(name: string): Promise<string> {
+    const candidates = [
+      ...(this.projectDir ? [join(this.projectDir, 'templates', `${name}.md`)] : []),
+      join(this.templatesDir, `${name}.md`),
+    ];
+    const path = AGENT_NAME.test(name) ? candidates.find((c) => existsSync(c)) : undefined;
+    if (!path)
+      throw new WorkflowError(`template "${name}" not found (looked in ${candidates.join(', ')})`);
+    return readFile(path, 'utf8');
   }
 
   rubricPath(rubric: string): string | undefined {

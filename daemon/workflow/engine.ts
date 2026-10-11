@@ -25,6 +25,7 @@ import {
   type GateResult,
 } from './gates.js';
 import type { AgentLibrary, ProjectSettings, ResolvedAgent } from './load.js';
+import { areaName, CommentOutput, IssuesOutput, planProblems } from './outputs.js';
 import type { RunState } from './runState.js';
 import {
   describeGate,
@@ -37,12 +38,14 @@ import {
   type Strategy,
   type Workflow,
 } from './schema.js';
-import { selectWorkflow } from './select.js';
+import { IDEA_LABEL, selectWorkflow } from './select.js';
 
 export const LABELS = {
   readyToMerge: 'factory:ready-to-merge',
   blocked: 'factory:blocked',
   needsYou: 'factory:needs-you',
+  /** An idea issue becomes the epic of the sub-issues its plan created. */
+  epic: 'epic',
 } as const;
 
 export type EngineEvent =
@@ -64,6 +67,8 @@ export interface EngineDeps {
   library: (project: Project) => AgentLibrary;
   ownerLogin: string;
   ci: Omit<CiOptions, 'github'>;
+  /** Puts issues an `output: issues` stage created in the board's ready column. */
+  board?: { addToReady(contentId: string): Promise<void> };
   now: () => Date;
   newId: () => string;
   onEvent?: (event: EngineEvent) => void;
@@ -193,25 +198,18 @@ export class WorkflowEngine {
       );
     }
 
-    // A run parked on a human gate is checked often; ask only that gate until it moves.
+    // A run parked on a human gate is checked often; ask only that gate until it moves, and use
+    // its answer in the full pass below (asking twice could read a different answer).
+    let parked: GateResult | undefined;
     const parkedGate = stage.gates.filter((gate) => gate.on === run.phase)[run.gateIndex];
     if (run.status === 'waiting' && parkedGate?.kind === 'human') {
-      const decision = await evaluateHuman(
+      parked = await evaluateHuman(
         { github: this.deps.github, store: this.deps.store, ownerLogin: this.deps.ownerLogin },
         parkedGate,
         project.repo,
         run,
       );
-      if (decision.kind === 'pending') return run;
-      // Put a taken approval back, so the full pass below sees it.
-      if (decision.kind === 'pass') {
-        this.deps.store.addDecision({
-          project: run.project,
-          issue: run.issue,
-          kind: 'approve',
-          feedback: null,
-        });
-      }
+      if (parked.kind === 'pending') return run;
     }
 
     const issue = await this.deps.github.getIssue(project.repo, run.issue);
@@ -259,7 +257,9 @@ export class WorkflowEngine {
         gate.kind === 'review' ? await this.#reviewer(gate.agent, run, ctx) : undefined;
       let result: GateResult;
       try {
-        result = await this.#evaluate(gate, run, ctx, reviewer);
+        result =
+          parked && i === run.gateIndex ? parked : await this.#evaluate(gate, run, ctx, reviewer);
+        parked = undefined;
       } catch (error) {
         if (error instanceof GateAborted) return this.#stop(run, 'Afbrudt under en gate.');
         throw error;
@@ -278,6 +278,9 @@ export class WorkflowEngine {
       await this.#leaveWaiting(run, project);
       if (result.kind === 'fail')
         return this.#fail(run, project, stage, library, gate.kind, result.feedback);
+      if (result.answer !== undefined) {
+        handOff(run, `Svar fra ${this.deps.ownerLogin}`, result.answer);
+      }
       run.gateIndex = i + 1;
       this.#save(run);
     }
@@ -295,6 +298,7 @@ export class WorkflowEngine {
 
     const nextStage = workflow.stages[run.stageIndex + 1];
     if (!nextStage) return this.#finish(run, project);
+    // `handoff` stays: later stages build on what earlier ones produced.
     Object.assign(run, {
       stageIndex: run.stageIndex + 1,
       stageId: nextStage.id,
@@ -328,7 +332,11 @@ export class WorkflowEngine {
       agent: agent.body,
       issue: issueInput(issue),
       ...(await this.#context(run, issue, workspace, agent)),
-      ...(ctx.settings.ci && { checks: ctx.settings.ci }),
+      ...(stage.output === 'pr' && ctx.settings.ci && { checks: ctx.settings.ci }),
+      ...(run.handoff && { handoff: run.handoff }),
+      templates: await Promise.all(
+        agent.templates.map(async (name) => ({ name, text: await library.loadTemplate(name) })),
+      ),
       feedback: run.feedback,
       instructions,
     });
@@ -339,12 +347,19 @@ export class WorkflowEngine {
     this.#emit({ type: 'turn', run, agent: agent.name, runner: effective.runner });
     const started = this.deps.now().getTime();
     let report: RunReport | undefined;
+    const schema =
+      stage.output === 'comment'
+        ? CommentOutput
+        : stage.output === 'issues'
+          ? IssuesOutput
+          : undefined;
     const task = {
       id: `${run.project}#${String(run.issue)}`,
       role: effective.agent,
       prompt,
       workspace,
       ...(ctx.signal && { signal: ctx.signal }),
+      ...(schema && { readOnly: { schema } }),
     };
     for await (const event of runner.run(task)) {
       this.#emit({ type: 'agent', run, event });
@@ -369,7 +384,18 @@ export class WorkflowEngine {
     if (report.status === 'failed')
       return this.#fail(run, project, stage, library, 'agent', report.summary);
 
+    if (stage.output !== 'pr') {
+      const outcome = await this.#deliver(run, ctx, report.output);
+      if (outcome) return outcome;
+      run.turnFinishedAt = this.deps.now().toISOString();
+      run.turnDone = true;
+      run.gateIndex = 0;
+      this.#save(run);
+      return undefined;
+    }
+
     run.lastSummary = report.summary;
+    run.turnFinishedAt = this.deps.now().toISOString();
     run.turnDone = true;
     run.gateIndex = 0;
     if (report.commits.length > 0) {
@@ -382,14 +408,86 @@ export class WorkflowEngine {
             head: run.branch,
             base,
             title: issue.title,
-            body: pullRequestBody(issue, report, { role: effective.agent, runner: runner.name }),
+            body: pullRequestBody(issue, report, {
+              role: effective.agent,
+              runner: runner.name,
+              // An issue that a later stage turns into an epic must stay open.
+              closes: !ctx.workflow.stages
+                .slice(run.stageIndex + 1)
+                .some((s) => s.output === 'issues'),
+            }),
           }));
         run.pr = { number: pr.number, url: pr.html_url, openedAt: this.deps.now().toISOString() };
         this.#status(run, `PR: ${pr.html_url}`);
       }
     }
+    if (run.pr)
+      handOff(run, `Stage "${stage.id}" (${agent.name})`, `PR: ${run.pr.url}\n\n${report.summary}`);
     this.#save(run);
     return undefined;
+  }
+
+  /**
+   * Delivers the answer of a read-only stage: posts the comment, or creates the sub-issues.
+   * Returns the run when the step ends here (a blocked or unusable answer), undefined otherwise.
+   */
+  async #deliver(run: RunState, ctx: StepContext, output: unknown): Promise<RunState | undefined> {
+    const { project, stage, library, agent } = ctx;
+    if (stage.output === 'comment') {
+      const answer = CommentOutput.parse(output);
+      if (answer.status === 'blocked')
+        return this.#fail(run, project, stage, library, 'agent', answer.summary);
+      await this.deps.github.createComment(project.repo, run.issue, answer.comment);
+      handOff(run, `Stage "${stage.id}" (${agent.name})`, answer.comment);
+      run.lastSummary = answer.summary;
+      this.#status(run, `Kommentar: ${answer.summary}`);
+      return undefined;
+    }
+    const plan = IssuesOutput.parse(output);
+    if (plan.status === 'blocked')
+      return this.#fail(run, project, stage, library, 'agent', plan.summary);
+    const problems = planProblems(plan);
+    if (problems.length > 0) {
+      return this.#fail(
+        run,
+        project,
+        stage,
+        library,
+        'agent',
+        `Planen kan ikke bruges:\n- ${problems.join('\n- ')}`,
+      );
+    }
+    await this.#createIssues(run, project, plan);
+    run.lastSummary = plan.summary;
+    return undefined;
+  }
+
+  /**
+   * Creates the plan's issues as sub-issues of the run's issue, with their area label and
+   * "blocked by" links, and puts them in Ready. Each created issue is saved on the run at once,
+   * so a rerun after a crash does not create it twice.
+   */
+  async #createIssues(run: RunState, project: Project, plan: IssuesOutput): Promise<void> {
+    const { github, board } = this.deps;
+    const created = (run.created ??= []);
+    for (const planned of plan.issues) {
+      if (created.some((c) => c.key === planned.key)) continue;
+      const issue = await github.createSubIssue(project.repo, run.issue, {
+        title: planned.title,
+        body: planned.body,
+        labels: [`area:${areaName(planned.area)}`],
+      });
+      created.push({ key: planned.key, number: issue.number, id: issue.id });
+      this.#save(run);
+      for (const dep of planned.dependsOn) {
+        const blocker = created.find((c) => c.key === dep);
+        if (blocker) await github.addBlockedBy(project.repo, issue.number, blocker.id);
+      }
+      await board?.addToReady(issue.nodeId);
+      this.#status(run, `Oprettede #${String(issue.number)}: ${planned.title}`);
+    }
+    await github.removeLabel(project.repo, run.issue, IDEA_LABEL);
+    await github.addLabels(project.repo, run.issue, [LABELS.epic]);
   }
 
   /**
@@ -577,8 +675,21 @@ export class WorkflowEngine {
 
   async #finish(run: RunState, project: Project): Promise<RunState> {
     run.status = 'done';
-    this.#save(run);
     const { github } = this.deps;
+    if (run.created && run.created.length > 0) {
+      run.outcome = 'planned';
+      this.#save(run);
+      const list = run.created.map((c) => `#${String(c.number)}`).join(', ');
+      await github.createComment(
+        project.repo,
+        run.issue,
+        `**Planlagt.** Issuet er nu en epic med ${String(run.created.length)} sub-issues: ${list}. De ligger i Ready, og fabrikken tager dem, når deres afhængigheder er lukket.${run.lastSummary ? `\n\n${run.lastSummary}` : ''}`,
+      );
+      this.#status(run, `Færdig. Planlagt som epic med ${list}.`);
+      return run;
+    }
+    run.outcome = 'ready-to-merge';
+    this.#save(run);
     const target = run.pr?.number ?? run.issue;
     await github.addLabels(project.repo, target, [LABELS.readyToMerge]);
     await github.createComment(
@@ -594,15 +705,34 @@ export class WorkflowEngine {
     if (run.status === 'waiting') return run;
     run.status = 'waiting';
     run.waitingSince = this.deps.now().toISOString();
-    this.#save(run);
     const n = String(run.issue);
-    const how =
-      gate.kind === 'human' && gate.mode === 'approve_pr' && run.pr
-        ? `Godkend ${run.pr.url} med et review, eller afvis med \`/factory reject #${n} "…"\`.`
-        : `Svar med \`/factory approve #${n}\` eller \`/factory reject #${n} "…"\`.`;
+    const reject = `\`/factory reject #${n} "…"\``;
+    const mode = gate.kind === 'human' ? gate.mode : 'always';
+    const { reason, text } =
+      mode === 'answer'
+        ? {
+            reason: 'venter på dit svar',
+            text: `**Venter på dit svar.** Svar på spørgsmålene i en kommentar her. Skriv \`/factory approve #${n}\` for at følge alle anbefalinger.`,
+          }
+        : mode === 'merge' && run.pr
+          ? {
+              reason: 'venter på, at du merger PR’en',
+              text: `**Venter på merge.** Merge ${run.pr.url}, når den er god. Bed om ændringer med et review, eller afvis med ${reject}.`,
+            }
+          : mode === 'approve_pr' && run.pr
+            ? {
+                reason: 'venter på din godkendelse',
+                text: `**Venter på dig.** Godkend ${run.pr.url} med et review, eller afvis med ${reject}.`,
+              }
+            : {
+                reason: 'venter på din godkendelse',
+                text: `**Venter på dig.** Svar med \`/factory approve #${n}\` eller ${reject}.`,
+              };
+    run.reason = reason;
+    this.#save(run);
     await this.deps.github.addLabels(project.repo, run.issue, [LABELS.needsYou]);
-    await this.deps.github.createComment(project.repo, run.issue, `**Venter på dig.** ${how}`);
-    this.#status(run, 'Venter på dig.');
+    await this.deps.github.createComment(project.repo, run.issue, text);
+    this.#status(run, `Venter på dig: ${reason}.`);
     return run;
   }
 
@@ -610,6 +740,7 @@ export class WorkflowEngine {
     if (run.status !== 'waiting') return;
     run.status = 'active';
     delete run.waitingSince;
+    delete run.reason;
     this.#save(run);
     await this.deps.github.removeLabel(project.repo, run.issue, LABELS.needsYou);
   }
@@ -682,6 +813,14 @@ export class WorkflowEngine {
   #emit(event: EngineEvent): void {
     this.deps.onEvent?.(event);
   }
+}
+
+/** Adds or replaces (by title) what a stage hands to the next ones. */
+function handOff(run: RunState, title: string, text: string): void {
+  const handoff = (run.handoff ??= []);
+  const at = handoff.findIndex((h) => h.title === title);
+  if (at >= 0) handoff[at] = { title, text };
+  else handoff.push({ title, text });
 }
 
 function firstPhase(strategy: Strategy): Phase {

@@ -50,6 +50,7 @@ async function harness(options: HarnessOptions = {}) {
   for (const extra of options.runners ?? []) runners.set(extra.name, extra);
   const workspace = new FakeWorkspace(projectPath, 'factory/12-tilfoej-add');
   const events: EngineEvent[] = [];
+  const addedToBoard: string[] = [];
   let ids = 0;
   const engine = new WorkflowEngine({
     github,
@@ -60,6 +61,12 @@ async function harness(options: HarnessOptions = {}) {
     project: () => Promise.resolve(project),
     library: (p) => new AgentLibrary(baselineDir, join(p.path, '.factory')),
     ownerLogin: 'nikolajjepsen',
+    board: {
+      addToReady: (contentId) => {
+        addedToBoard.push(contentId);
+        return Promise.resolve();
+      },
+    },
     ci: {
       pollMs: 15_000,
       timeoutMs: 30 * 60_000,
@@ -90,6 +97,8 @@ async function harness(options: HarnessOptions = {}) {
     ladder,
     statusMessages,
     tick,
+    addedToBoard,
+    now,
   };
 }
 
@@ -500,5 +509,170 @@ stages:
     h.store.setWorkflowOverride('demo', 12, 'chore');
     const run = await settle(h);
     expect(run.workflow).toBe('chore');
+  });
+});
+
+describe('WorkflowEngine: the idea workflow (product department)', () => {
+  const brief = {
+    status: 'done',
+    summary: 'Tre spørgsmål om galleriet.',
+    comment:
+      '## Decision Brief: Galleri\n\n| 1 | Struktur | Begivenheder + album | Kun begivenheder |',
+  };
+  const plan = {
+    status: 'done',
+    summary: 'Tre vertikale snit.',
+    issues: [
+      { key: 'storage', title: 'Storage-adapter', body: 'B1', area: 'storage', dependsOn: [] },
+      { key: 'upload', title: 'Upload', body: 'B2', area: 'area:upload', dependsOn: ['storage'] },
+      {
+        key: 'view',
+        title: 'Visning',
+        body: 'B3',
+        area: 'gallery',
+        dependsOn: ['storage', 'upload'],
+      },
+    ],
+  };
+
+  async function ideaHarness() {
+    const h = await harness();
+    h.github.issue = {
+      ...h.github.issue,
+      title: 'Jeg vil have et galleri',
+      body: 'Logen skal kunne dele billeder.',
+      labels: [{ name: 'idea' }],
+    };
+    return h;
+  }
+
+  it('turns "Jeg vil have et galleri" into an epic with sub-issues after one round of answers', async () => {
+    const h = await ideaHarness();
+    h.runner.script({ output: brief });
+
+    // Analysis: the brief is posted, and the run waits for the owner's answer.
+    let run = await settle(h);
+    expect(run.workflow).toBe('idea');
+    expect(run).toMatchObject({
+      status: 'waiting',
+      stageId: 'analysis',
+      reason: 'venter på dit svar',
+    });
+    expect(h.runner.reviewTasks.map((t) => t.role)).toEqual(['analyst']);
+    expect(h.runner.reviewTasks[0]?.prompt).toContain('# Template: decision-brief');
+    expect(h.github.comments.map((c) => c.body)).toEqual([
+      brief.comment,
+      expect.stringMatching(/^\*\*Venter på dit svar\.\*\*/),
+    ]);
+    run = await h.engine.advance(run);
+    expect(run.status).toBe('waiting');
+
+    // The owner answers in a plain comment; the spec agent gets the brief and the answer.
+    h.tick(60_000);
+    h.github.repoComments.set('o/demo', [
+      {
+        id: 1,
+        issueNumber: 12,
+        author: 'nikolajjepsen',
+        body: '1: kun begivenheder, resten som anbefalet',
+        createdAt: h.now().toISOString(),
+        url: 'u',
+      },
+    ]);
+    run = await h.engine.runUntilSettled(await h.engine.advance(run));
+    expect(run).toMatchObject({
+      status: 'waiting',
+      stageId: 'spec',
+      reason: 'venter på, at du merger PR’en',
+    });
+    const specPrompt = h.runner.writeTasks[0]?.prompt ?? '';
+    expect(h.runner.writeTasks.map((t) => t.role)).toEqual(['spec']);
+    expect(specPrompt).toContain('# Earlier in this workflow');
+    expect(specPrompt).toContain(
+      '## Svar fra nikolajjepsen\n\n1: kun begivenheder, resten som anbefalet',
+    );
+    expect(specPrompt).toContain('# Template: spec');
+    // The spec PR refers to the idea instead of closing it: the idea becomes the epic.
+    expect(h.github.created[0]?.pr.body).toMatch(/^Refs #12/);
+
+    // Not merged yet: still waiting.
+    run = await h.engine.advance(run);
+    expect(run.status).toBe('waiting');
+
+    // Merged: the planner runs and the factory creates the sub-issues.
+    h.github.mergedPrs.add(5);
+    h.runner.script({ output: plan });
+    run = await h.engine.runUntilSettled(await h.engine.advance(run));
+    expect(run).toMatchObject({ status: 'done', outcome: 'planned' });
+    expect(h.runner.reviewTasks.at(-1)?.prompt).toContain('PR: https://github.com/o/demo/pull/5');
+    expect(
+      h.github.subIssues.map((i) => [i.parent, i.number, i.title, i.labels, i.blockedBy]),
+    ).toEqual([
+      [12, 200, 'Storage-adapter', ['area:storage'], []],
+      [12, 201, 'Upload', ['area:upload'], [9200]],
+      [12, 202, 'Visning', ['area:gallery'], [9200, 9201]],
+    ]);
+    expect(h.addedToBoard).toEqual(['I_200', 'I_201', 'I_202']);
+    expect(h.github.labelsOf(12)).toEqual([LABELS.epic]);
+    expect(h.github.labelsOf(5)).toEqual([]);
+    expect(h.github.comments.at(-1)?.body).toMatch(
+      /^\*\*Planlagt\.\*\* Issuet er nu en epic med 3 sub-issues: #200, #201, #202\./,
+    );
+  });
+
+  it('accepts every recommendation on /factory approve', async () => {
+    const h = await ideaHarness();
+    h.runner.script({ output: brief });
+    let run = await settle(h);
+    h.store.addDecision({ project: 'demo', issue: 12, kind: 'approve', feedback: null });
+    run = await h.engine.runUntilSettled(await h.engine.advance(run));
+    expect(run.stageId).toBe('spec');
+    expect(h.runner.writeTasks[0]?.prompt).toContain(
+      'nikolajjepsen godkendte alle anbefalinger uden ændringer.',
+    );
+  });
+
+  it('sends an unusable plan back to the planner with the problems as feedback', async () => {
+    const h = await ideaHarness();
+    h.runner.script(
+      { output: brief },
+      {},
+      { output: { ...plan, issues: [{ ...plan.issues[1], dependsOn: ['ghost'] }] } },
+      { output: plan },
+    );
+    let run = await settle(h);
+    h.store.addDecision({ project: 'demo', issue: 12, kind: 'approve', feedback: null });
+    run = await h.engine.runUntilSettled(await h.engine.advance(run));
+    h.github.mergedPrs.add(5);
+    run = await h.engine.runUntilSettled(await h.engine.advance(run));
+    expect(run.outcome).toBe('planned');
+    expect(h.ladder()).toEqual(['retry_with_feedback x2']);
+    expect(h.runner.reviewTasks.at(-1)?.prompt).toContain(
+      '"upload" afhænger af "ghost", som ikke er et tidligere issue i listen.',
+    );
+    expect(h.github.subIssues).toHaveLength(3);
+  });
+
+  it('retries the spec when the owner requests changes on the spec PR', async () => {
+    const h = await ideaHarness();
+    h.runner.script({ output: brief });
+    let run = await settle(h);
+    h.store.addDecision({ project: 'demo', issue: 12, kind: 'approve', feedback: null });
+    run = await h.engine.runUntilSettled(await h.engine.advance(run));
+    h.tick(60_000);
+    h.github.reviews = [
+      {
+        user: { login: 'nikolajjepsen' },
+        state: 'CHANGES_REQUESTED',
+        body: 'Video skal med.',
+        submitted_at: h.now().toISOString(),
+      },
+    ];
+    run = await h.engine.runUntilSettled(await h.engine.advance(run));
+    expect(h.runner.writeTasks).toHaveLength(2);
+    expect(h.runner.writeTasks[1]?.prompt).toContain(
+      'nikolajjepsen bad om ændringer: Video skal med.',
+    );
+    expect(run).toMatchObject({ status: 'waiting', stageId: 'spec' });
   });
 });

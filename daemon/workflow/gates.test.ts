@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { checkRun, FakeGitHub } from '../../test/support/fakeGitHub.js';
-import { type CiOptions, evaluateCi, excerptLog, GateAborted } from './gates.js';
+import { SqliteStore } from '../store/store.js';
+import { type CiOptions, evaluateCi, evaluateHuman, excerptLog, GateAborted } from './gates.js';
+import type { RunState } from './runState.js';
 
 function ci(github: FakeGitHub, overrides: Partial<CiOptions> = {}) {
   let clock = 0;
@@ -110,5 +112,50 @@ describe('excerptLog', () => {
     expect(excerpt.startsWith('…\n')).toBe(true);
     expect(excerpt).toContain('line 499');
     expect(excerpt).not.toContain('line 100 ');
+  });
+});
+
+describe('evaluateHuman: answer', () => {
+  const run = {
+    project: 'demo',
+    issue: 12,
+    createdAt: '2026-10-11T18:00:00.000Z',
+    waitingSince: '2026-10-11T18:05:00.000Z',
+  } as RunState;
+  const gate = { kind: 'human', mode: 'answer', on: 'code' } as const;
+  const comment = (id: number, body: string, overrides = {}) => ({
+    id,
+    issueNumber: 12,
+    author: 'nikolajjepsen',
+    body,
+    createdAt: '2026-10-11T18:10:00.000Z',
+    url: 'u',
+    ...overrides,
+  });
+
+  it('takes the first owner comment after waiting began that is more than commands', async () => {
+    const github = new FakeGitHub();
+    github.repoComments.set('o/demo', [
+      comment(1, 'For tidligt', { createdAt: '2026-10-11T18:01:00.000Z' }),
+      comment(2, 'Fra en anden', { author: 'someone' }),
+      comment(3, 'Anden issue', { issueNumber: 13 }),
+      comment(4, 'Fabrikken skrev <!-- ai-factory -->'),
+      comment(5, '/factory status'),
+      comment(6, '/factory status\n1: B, resten som anbefalet'),
+    ]);
+    const options = { github, store: new SqliteStore(':memory:'), ownerLogin: 'nikolajjepsen' };
+    expect(await evaluateHuman(options, gate, 'o/demo', run)).toEqual({
+      kind: 'pass',
+      answer: '1: B, resten som anbefalet',
+    });
+  });
+
+  it('stays pending without an answer', async () => {
+    const options = {
+      github: new FakeGitHub(),
+      store: new SqliteStore(':memory:'),
+      ownerLogin: 'nikolajjepsen',
+    };
+    expect(await evaluateHuman(options, gate, 'o/demo', run)).toEqual({ kind: 'pending' });
   });
 });

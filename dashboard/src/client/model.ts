@@ -223,7 +223,7 @@ export function waitingView(entry: WaitingEntry): WaitingView {
       return {
         icon: '?',
         title,
-        kind: 'Venter på din godkendelse',
+        kind: capitalize(entry.text),
         action: { label: 'Godkend', command: 'approve' },
         canReject: true,
       };
@@ -244,6 +244,10 @@ export function waitingView(entry: WaitingEntry): WaitingView {
         canReject: false,
       };
   }
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** The runner "switch runner" moves to, or null when there is nothing to switch to. */
