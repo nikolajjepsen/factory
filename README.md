@@ -27,6 +27,7 @@ pnpm install
 pnpm check              # typecheck + lint + test, samme som CI
 pnpm factory --version  # kør CLI'en direkte fra kildekoden
 pnpm factory quota      # Codex-kvoten (kræver codex installeret og logget ind)
+pnpm factory run --project ekvilibrium --issue 1   # løs et issue og åbn en PR
 pnpm format             # ret formatering med Prettier
 ```
 
@@ -50,6 +51,8 @@ Fabrikken ændrer aldrig selv CI-konfiguration eller branch protection. En PR, d
 - `docs/design.md` – designdokumentet
 - `docs/mockups/` – kontrolrummet
 - `docs/codex-app-server.md` – protokollen og klienten mod `codex app-server`
+- `docs/runner.md` – runner-kontrakten, og hvordan et issue bliver til en PR
+- `projects.yml` – de projekter, fabrikken arbejder på (`repo` og lokal `path`)
 - `CHANGELOG.md` – ændringer i adfærd
 - `daemon/` – kø, tilstandsmaskine, heartbeat, kvote og CLI'en (`daemon/cli/`)
 - `runners/` – motor-adaptere (Codex først)

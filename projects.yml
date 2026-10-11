@@ -1,0 +1,5 @@
+# Projekter, fabrikken arbejder på. M6 tilføjer focus, weight og quota_share.
+projects:
+  ekvilibrium:
+    repo: nikolajjepsen/ekvilibrium
+    path: ~/dev/ekvilibrium

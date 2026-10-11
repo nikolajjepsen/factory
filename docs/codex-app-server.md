@@ -30,6 +30,15 @@ Fabrikken taler med Codex gennem `codex app-server` over stdio. Koden ligger i `
 - `account/rateLimits/updated` er en sparsom opdatering. Den flettes ind i det seneste snapshot: vinduer og nulstillingstider, opdateringen udelader, beholder deres værdi.
 - Resultatet er `QuotaSnapshot` (`daemon/quota/quota.ts`) med ISO-tidspunkter. Kernen kender kun `QuotaSource`-interfacet.
 
+## Threads og turns
+
+Se `docs/runner.md` for, hvordan runneren bruger dem. Fund fra rigtige kørsler (`test/fixtures/codex/turn-*.jsonl`):
+
+- `thread/start` svarer med `thread.id`. `turn/start` svarer med `turn.id` og `status: "inProgress"`.
+- Forløbet kommer som notifikationer: `turn/started`, `item/started` og `item/completed` (fx `agentMessage`, `commandExecution`, `fileChange`), mange `item/agentMessage/delta`, `thread/tokenUsage/updated` og til sidst `turn/completed`.
+- Med `outputSchema` er den sidste `agentMessage` (`phase: "final_answer"`) JSON efter skemaet.
+- Sandkassen `workspaceWrite` blokerer `git commit` i et worktree: `index.lock ... Operation not permitted`.
+
 ## CLI
 
 ```bash
