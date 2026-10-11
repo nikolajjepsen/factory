@@ -52,13 +52,16 @@ describe('control room view model', () => {
       resumes: true,
       banner: { tone: 'warn' },
     });
+    // Local times, so the test passes in any time zone (CI runs in UTC).
+    const evening = new Date(2026, 9, 11, 22, 0);
     const quota = modeView(
       sampleState({
         mode: 'waiting_quota',
         reason: 'Dagens budget er brugt.',
-        nextStart: '2026-10-11T22:00:00.000Z',
+        heartbeat: new Date(evening.getTime() - 12_000).toISOString(),
+        nextStart: new Date(2026, 9, 12, 0, 0).toISOString(),
       }),
-      now,
+      evening,
     );
     expect(quota.label).toBe('Venter på kvote');
     expect(quota.banner?.text).toMatch(
