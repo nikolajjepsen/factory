@@ -563,9 +563,10 @@ describe('Daemon: dashboard controls', () => {
   });
 
   it('shows the workflow steps, the runner and the projects while working', async () => {
-    const h = await harness({ runner: (inner) => new GatedRunner(inner) });
+    const gated: { runner?: GatedRunner } = {};
+    const h = await harness({ runner: (inner) => (gated.runner = new GatedRunner(inner)) });
     const running = h.daemon.tick();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await gated.runner?.started;
     const state = h.daemon.state();
     expect(state.current).toMatchObject({
       runner: 'codex',
@@ -724,7 +725,10 @@ describe('Daemon: heartbeat', () => {
     h.board.read = () => Promise.reject(new Error('GitHub svarer ikke'));
     const controller = new AbortController();
     const loop = h.daemon.run(controller.signal);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Wait for the failed pass itself instead of a fixed time, which is flaky on a slow CI.
+    while (!h.lines.some((l) => l.includes('Tilstand: error'))) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
     controller.abort();
     await loop;
     expect(h.lines.some((l) => l.includes('Tilstand: error (GitHub svarer ikke)'))).toBe(true);
