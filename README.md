@@ -15,6 +15,8 @@ En lokal AI-fabrik: Nikolaj sætter mål og prioriteter i GitHub, og agenter (pr
 
 ### Start og stop
 
+Kør kommandoerne fra fabrikkens mappe (`~/dev/ai-factory`). En installeret launchd-agent starter selv i den mappe.
+
 ```bash
 pnpm factory daemon              # i forgrunden; Ctrl-C stopper og gemmer et kørende trin som WIP
 pnpm factory install-service     # døgnet rundt som launchd-agent, også efter genstart af Mac'en
