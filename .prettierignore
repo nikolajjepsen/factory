@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+docs/mockups/
+coverage/
+dist/
+# Markdown redigeres i hånden; Prettier ville polstre tabeller og give støj i diffs.
+*.md

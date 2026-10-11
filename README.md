@@ -18,12 +18,42 @@ Første prompt til Codex (eller Claude Code):
 
 Fortsæt milepæl for milepæl. Efter M3 kan fabrikken begynde at tage sine egne issues.
 
+## Udvikling
+
+Kræver Node 22 eller nyere og pnpm (versionen står i `packageManager` i `package.json`; `corepack enable` henter den).
+
+```bash
+pnpm install
+pnpm check              # typecheck + lint + test, samme som CI
+pnpm factory --version  # kør CLI'en direkte fra kildekoden
+pnpm format             # ret formatering med Prettier
+```
+
+CLI'en køres med `tsx` direkte fra TypeScript-kilden. Der er intet build-trin.
+
+## Branch protection
+
+CI-workflowet `.github/workflows/ci.yml` har ét job, `pnpm check`. Opsæt branch protection på `main` sådan her (Settings → Branches → Add rule, eller en ruleset):
+
+- Kræv en pull request før merge.
+- Kræv, at status-tjekket `pnpm check` er grønt, og at branchen er opdateret med `main`.
+- Bloker force push og sletning af `main`.
+- Gælder også administratorer. Nikolaj er merge-gate, men går også gennem grøn CI.
+
+Fabrikken ændrer aldrig selv CI-konfiguration eller branch protection. En PR, der rører `.github/`, skal sige det tydeligt i beskrivelsen.
+
 ## Filer
 
 - `BUILD_PLAN.md` – milepæle og acceptkriterier
 - `AGENTS.md` / `CLAUDE.md` – regler for agenterne
 - `docs/design.md` – designdokumentet
 - `docs/mockups/` – kontrolrummet
+- `CHANGELOG.md` – ændringer i adfærd
+- `daemon/` – kø, tilstandsmaskine, heartbeat, kvote og CLI'en (`daemon/cli/`)
+- `runners/` – motor-adaptere (Codex først)
+- `agents/baseline/` – generalist-agenter pr. rolle
+- `dashboard/` – kontrolrummet som container
+- `templates/` – skabeloner til produktafdelingen
 
 ## Arkitektur i én linje
 
