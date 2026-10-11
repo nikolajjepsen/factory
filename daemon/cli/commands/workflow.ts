@@ -17,7 +17,9 @@ export function registerWorkflowCommand(program: Command, deps: WorkflowCommandD
   const workflow = program.command('workflow').description('workflow-filer');
   workflow
     .command('validate')
-    .description('valider baseline-workflows og projekternes .factory/workflows/')
+    .description(
+      'valider baseline-workflows og projekternes .factory/ (workflows, agenter, project.yml)',
+    )
     .action(async (_options: unknown, command: Command) => {
       const result = await deps.validateWorkflows();
       for (const line of result.checked) deps.stdout(`✓ ${line}\n`);

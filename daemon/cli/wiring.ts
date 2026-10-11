@@ -82,7 +82,7 @@ export async function runSingleRole(
     const runner = runners.get('codex');
     if (!runner) throw new Error('codex runner missing');
     return runIssue(
-      { github, runner, worktrees: worktrees(), agentsDir: join(factoryRoot, 'agents') },
+      { github, runner, worktrees: worktrees(), library: libraryFor(project.path) },
       { project, issue: options.issue, role: options.role, signal, ...(onEvent && { onEvent }) },
     );
   });
@@ -214,6 +214,7 @@ export async function validateWorkflows(): Promise<WorkflowValidation> {
       for (const workflow of workflows.values()) {
         result.problems.push(...checkReferences(workflow, library, KNOWN_RUNNERS));
       }
+      result.problems.push(...(await library.checkProject(KNOWN_RUNNERS)));
       result.checked.push(`${label}: ${[...workflows.keys()].sort().join(', ')}`);
     } catch (error) {
       result.problems.push(error instanceof Error ? error.message : String(error));

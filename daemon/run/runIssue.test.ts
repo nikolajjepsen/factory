@@ -7,6 +7,7 @@ import type { RunEvent, Runner, RunReport, RunTask } from '../runner/runner.js';
 import type { PrepareOptions } from '../workspace/workspace.js';
 import { FakeGitHub } from '../../test/support/fakeGitHub.js';
 import { FakeWorkspace } from '../../test/support/fakeWorkspace.js';
+import { AgentLibrary } from '../workflow/load.js';
 import { pullRequestBody, runIssue } from './runIssue.js';
 
 const project = { name: 'demo', repo: 'o/demo', path: '/repos/demo' };
@@ -51,7 +52,12 @@ async function setup(runner = new FakeRunner()) {
       return Promise.resolve(workspace);
     },
   };
-  const deps = { github, runner, worktrees, agentsDir: join(factoryRoot, 'agents') };
+  const deps = {
+    github,
+    runner,
+    worktrees,
+    library: new AgentLibrary(join(factoryRoot, 'agents', 'baseline')),
+  };
   const ws = () => {
     if (!workspace) throw new Error('not prepared');
     return workspace;

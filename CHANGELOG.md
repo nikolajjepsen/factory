@@ -5,6 +5,9 @@
 ### Tilføjet
 
 - M6: Tænd/sluk pr. projekt med `/factory enable <projekt>` og `/factory disable <projekt>` og en kontakt ved hvert projekt i kontrolrummet. Et slukket projekt får ingen nye trin, og daemonen går videre med de andre. Indstillingen gemmes i daemonens database. `projects` i tilstanden har `enabled`.
+- M6: Agent-laget. Agentfiler har `extends`, `scope.labels`, `context` og `runner`. En stage og en review-gate får den projektagent, hvis `scope.labels` matcher flest af issuets labels, ellers projektets fil for rollen, ellers baseline. Loggen og forsøgsloggen viser den valgte agent og grunden. Se `docs/agents.md`.
+- M6: `<projekt>/.factory/project.yml` med `ci` (tjek-kommandoen, som kommer med i agentens prompt) og `runners` pr. rolle. Runneren vælges i rækkefølgen override, stage, agentfil, `project.yml`, `default_runner`.
+- M6: `factory workflow validate` tjekker også projektets agentfiler og `project.yml`. Ukendte felter er en fejl.
 - M6: Boardets rækkefølge i "Ready" er prioriteten på tværs af projekter. `weight` og `quota_share` fra den oprindelige plan udgår.
 
 - M5b: Kontrolrummet i `dashboard/` (Hono-server og Preact-UI bygget med esbuild) som container under OrbStack på `https://dashboard.ai-factory.orb.local`. Tema "Natskift": status og heartbeat, Pause/Genoptag, Nødstop, Skift runner, "Venter på dig", "Arbejder på nu" med workflowets trin, kø med op-knap og Hold, kvotemålere med dagsbudget og boost, dagens tal, log, projekter og fokus. Se `dashboard/README.md`.

@@ -59,7 +59,8 @@ Fabrikken ændrer aldrig selv CI-konfiguration eller branch protection. En PR, d
 - `docs/codex-app-server.md` – protokollen og klienten mod `codex app-server`
 - `docs/runner.md` – runner-kontrakten, og hvordan et issue bliver til en PR
 - `docs/workflows.md` – workflow-filer, ordforrådet og motoren
-- `docs/daemon.md` – daemonen: boardet, kvote, heartbeat, ChatOps, nødbremse og launchd
+- `docs/agents.md` – agentfiler, valget af agent og `.factory/project.yml`
+- `docs/daemon.md` – daemonen: boardet, projekter, kvote, heartbeat, ChatOps, nødbremse og launchd
 - `docs/api.md` – daemonens HTTP-API: tilstand, events og kommandoer
 - `projects.yml` – de projekter, fabrikken arbejder på (`repo` og lokal `path`)
 - `factory.yml` – fabrikkens konfiguration: board, ejer, status-repo, runner, grænser, kvoteregler og API-port

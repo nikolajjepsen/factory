@@ -1,15 +1,16 @@
 import type { Project } from '../config/projects.js';
-import type { GitHub, Issue, PullRequest } from '../github/github.js';
-import { buildPrompt, findSpecPath, loadAgentFile, readOptional } from '../prompt/buildPrompt.js';
+import { type GitHub, type Issue, labelNames, type PullRequest } from '../github/github.js';
+import { buildPrompt, findSpecPath, readOptional } from '../prompt/buildPrompt.js';
 import type { RunEvent, Runner, RunReport } from '../runner/runner.js';
+import type { AgentLibrary } from '../workflow/load.js';
 import { branchName, type PrepareOptions, type Workspace } from '../workspace/workspace.js';
 
 export interface RunIssueDeps {
   github: GitHub;
   worktrees: { prepare(options: PrepareOptions): Promise<Workspace> };
   runner: Runner;
-  /** Directory holding `baseline/<role>.md`. */
-  agentsDir: string;
+  /** The project's agent files and settings. */
+  library: AgentLibrary;
 }
 
 export interface RunIssueOptions {
@@ -36,7 +37,7 @@ export async function runIssue(
   deps: RunIssueDeps,
   options: RunIssueOptions,
 ): Promise<RunIssueResult> {
-  const { github, worktrees, runner, agentsDir } = deps;
+  const { github, worktrees, runner, library } = deps;
   const { project, role } = options;
   const issue = await github.getIssue(project.repo, options.issue);
   if (issue.state !== 'open') throw new Error(`Issue #${String(issue.number)} er ikke åbent.`);
@@ -51,22 +52,30 @@ export async function runIssue(
     baseBranch,
   });
 
-  const agent = await loadAgentFile(agentsDir, role);
+  const agent = await library.resolveAgent(role, labelNames(issue));
+  const settings = await library.projectSettings();
   const specPath = findSpecPath(issue.body);
   const specText = specPath ? await readOptional(workspace.path, specPath) : undefined;
   const agentsMd = await readOptional(workspace.path, 'AGENTS.md');
+  const context: { path: string; text: string }[] = [];
+  for (const path of agent.context) {
+    const text = await readOptional(workspace.path, path);
+    if (text !== undefined) context.push({ path, text });
+  }
   const prompt = buildPrompt({
     agent: agent.body,
     issue: { number: issue.number, title: issue.title, body: issue.body, url: issue.html_url },
     ...(specPath && specText !== undefined && { spec: { path: specPath, text: specText } }),
     ...(agentsMd !== undefined && { agentsMd }),
+    ...(context.length > 0 && { context }),
+    ...(settings.ci && { checks: settings.ci }),
     ...(options.feedback && { feedback: options.feedback }),
   });
 
   let report: RunReport | undefined;
   const task = {
     id: `${project.name}#${String(issue.number)}`,
-    role,
+    role: agent.name,
     prompt,
     workspace,
     ...(options.signal && { signal: options.signal }),
@@ -85,7 +94,7 @@ export async function runIssue(
       head: branch,
       base: baseBranch,
       title: issue.title,
-      body: pullRequestBody(issue, report, { role, runner: runner.name }),
+      body: pullRequestBody(issue, report, { role: agent.name, runner: runner.name }),
     }));
   return { report, issue, pullRequest };
 }

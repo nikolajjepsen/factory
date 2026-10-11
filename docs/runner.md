@@ -39,7 +39,7 @@ Er der intet ændret, laves ingen commit.
 
 1. Hent issuet. Det skal være åbent.
 2. Opret eller genbrug worktree'et `~/.ai-factory/worktrees/<projekt>/<issue>` på branchen `factory/<issue>-<slug>`, baseret på `origin/<default-branch>`.
-3. Byg prompten: agentfil (`agents/baseline/<rolle>.md`) + issue + spec (første `specs/*.md`, issuet nævner) + projektets `AGENTS.md` + evt. feedback fra tidligere forsøg.
+3. Byg prompten: agentfil (valgt ud fra issuets labels, se `docs/agents.md`) + issue + spec (første `specs/*.md`, issuet nævner) + projektets `AGENTS.md` + agentens `context`-filer + projektets `ci`-kommando + evt. feedback fra tidligere forsøg.
 4. Kør runneren.
 5. Ved `success` med commits: push branchen (aldrig `--force`) og åbn en PR, der lukker issuet. Findes der allerede en åben PR for branchen, genbruges den.
 

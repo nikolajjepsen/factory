@@ -56,6 +56,97 @@ describe('AgentLibrary', () => {
     await expect(library.loadAgent('nobody')).rejects.toThrow(/no agent file for "nobody"/);
   });
 
+  it('loads the baseline implementer shipped with the factory', async () => {
+    const agent = await new AgentLibrary(baselineDir).loadAgent('implementer');
+    expect(agent).toMatchObject({ name: 'implementer', role: 'implementer', reason: 'baseline' });
+    expect(agent.body).toMatch(/^# Implementer/);
+    expect(agent.body).toContain('Do not run `git commit`');
+  });
+
+  it('picks the domain agent whose labels match the issue, else the project agent, else baseline', async () => {
+    const library = await projectWith({
+      'agents/frontend.md':
+        '---\nextends: implementer\nscope:\n  labels: [area:frontend]\ncontext: [docs/ui.md]\n---\n# Frontend',
+      'agents/payments.md':
+        '---\nextends: implementer\nscope:\n  labels: [area:payments, area:frontend]\nrunner: claude\n---\n# Betaling',
+      'agents/ui-reviewer.md':
+        '---\nextends: reviewer\nscope:\n  labels: [area:frontend]\n---\n# UI-review',
+    });
+    const frontend = await library.resolveAgent('implementer', ['area:frontend', 'bug']);
+    expect(frontend).toMatchObject({
+      name: 'frontend',
+      role: 'implementer',
+      reason: 'label area:frontend',
+      context: ['docs/ui.md'],
+    });
+    expect(frontend.body).toMatch(/^# Implementer[\s\S]*\n\n# Frontend$/);
+
+    // More matching labels win.
+    expect(
+      await library.resolveAgent('implementer', ['area:frontend', 'area:payments']),
+    ).toMatchObject({
+      name: 'payments',
+      runner: 'claude',
+      reason: 'label area:payments, area:frontend',
+    });
+    // A domain agent only stands in for its own role.
+    expect(await library.resolveAgent('reviewer', ['area:frontend'])).toMatchObject({
+      name: 'ui-reviewer',
+    });
+    expect(await library.resolveAgent('implementer', ['area:backend'])).toMatchObject({
+      name: 'implementer',
+      reason: 'baseline',
+    });
+  });
+
+  it('breaks a tie between domain agents by name', async () => {
+    const library = await projectWith({
+      'agents/b-agent.md': '---\nextends: implementer\nscope:\n  labels: [area:x]\n---\nB',
+      'agents/a-agent.md': '---\nextends: implementer\nscope:\n  labels: [area:x]\n---\nA',
+    });
+    expect((await library.resolveAgent('implementer', ['area:x'])).name).toBe('a-agent');
+  });
+
+  it('lets a project agent extend the baseline file of its own name', async () => {
+    const library = await projectWith({
+      'agents/implementer.md': '---\nextends: implementer\nrunner: codex\n---\nBrug pnpm.',
+    });
+    const agent = await library.resolveAgent('implementer', []);
+    expect(agent).toMatchObject({ reason: 'projektagent', role: 'implementer', runner: 'codex' });
+    expect(agent.body).toMatch(/^# Implementer[\s\S]*Brug pnpm\.$/);
+  });
+
+  it('reports circles, unknown parents, bad frontmatter and unknown runners with the file name', async () => {
+    const library = await projectWith({
+      'agents/a.md': '---\nextends: b\n---\n',
+      'agents/b.md': '---\nextends: a\n---\n',
+      'agents/c.md': '---\nextends: ghost\n---\n',
+      'agents/d.md': '---\nscope:\n  paths: [src/]\n---\n',
+      'agents/e.md': '---\nrunner: gpt\n---\n',
+      'project.yml': 'runners:\n  reviewer: claude\n',
+    });
+    await expect(library.loadAgent('a')).rejects.toThrow(/extend each other in a circle/);
+    await expect(library.loadAgent('c')).rejects.toThrow(/extends unknown agent "ghost"/);
+    const problems = await library.checkProject(['codex']);
+    expect(problems).toHaveLength(6);
+    expect(problems[0]).toMatch(/project\.yml: runners\.reviewer: unknown runner "claude"/);
+    expect(problems[4]).toMatch(/d\.md has invalid frontmatter/);
+    expect(problems[5]).toMatch(/e\.md: unknown runner "gpt"/);
+  });
+
+  it('reads .factory/project.yml and rejects keys it does not know', async () => {
+    expect(await new AgentLibrary(baselineDir).projectSettings()).toEqual({ runners: {} });
+    const library = await projectWith({
+      'project.yml': 'ci: pnpm check\nrunners:\n  reviewer: codex\n',
+    });
+    expect(await library.projectSettings()).toEqual({
+      ci: 'pnpm check',
+      runners: { reviewer: 'codex' },
+    });
+    const old = await projectWith({ 'project.yml': 'max_fix_iterations: 3\n' });
+    await expect(old.projectSettings()).rejects.toThrow(/max_fix_iterations/);
+  });
+
   it('reports invalid YAML with the file name', async () => {
     const library = await projectWith({ 'workflows/broken.yml': 'stages: [' });
     await expect(library.loadWorkflows()).rejects.toThrow(/broken\.yml is not valid YAML/);

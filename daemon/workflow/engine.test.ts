@@ -19,6 +19,8 @@ interface HarnessOptions {
   workflows?: Record<string, string>;
   /** Extra agent files in the project's `.factory/agents/`. */
   agents?: string[];
+  /** Files written relative to the project, e.g. `.factory/project.yml` or `docs/ui.md`. */
+  files?: Record<string, string>;
   runners?: Runner[];
 }
 
@@ -32,6 +34,10 @@ async function harness(options: HarnessOptions = {}) {
   }
   for (const agent of options.agents ?? []) {
     await writeFile(join(factoryDir, 'agents', `${agent}.md`), `# ${agent}\n`);
+  }
+  for (const [path, content] of Object.entries(options.files ?? {})) {
+    await mkdir(join(projectPath, path, '..'), { recursive: true });
+    await writeFile(join(projectPath, path), content);
   }
   const project: Project = { name: 'demo', repo: 'o/demo', path: projectPath };
   const github = new FakeGitHub();
@@ -429,6 +435,64 @@ stages:
     expect(run.status).toBe('stopped');
     expect(h.workspace.commitMessages).toEqual(['WIP: demo#12 (interrupted)']);
     expect(h.store.attempts({ runId: run.id })).toHaveLength(1);
+  });
+
+  it('uses the domain agent for a matching area: label, with its context and the project checks', async () => {
+    const claude = new ScriptRunner('claude');
+    const h = await harness({
+      runners: [claude],
+      files: {
+        '.factory/agents/frontend.md':
+          '---\nextends: implementer\nscope:\n  labels: [area:frontend]\ncontext: [docs/ui.md]\n---\n# Frontend',
+        '.factory/agents/ui-reviewer.md':
+          '---\nextends: reviewer\nscope:\n  labels: [area:frontend]\n---\n# UI-review',
+        '.factory/project.yml': 'ci: pnpm check\nrunners:\n  reviewer: claude\n',
+        'docs/ui.md': 'Brug designsystemet.',
+      },
+    });
+    h.github.issue = { ...h.github.issue, labels: [{ name: 'area:frontend' }] };
+    const run = await settle(h);
+    expect(run.status).toBe('done');
+    expect(h.runner.writeTasks.map((t) => t.role)).toEqual(['frontend']);
+    const prompt = h.runner.writeTasks[0]?.prompt ?? '';
+    expect(prompt).toMatch(/^# Implementer[\s\S]*# Frontend/);
+    expect(prompt).toContain('# Context (docs/ui.md)\n\nBrug designsystemet.');
+    expect(prompt).toContain('Run `pnpm check` before you finish.');
+    // The reviewer runs on the project's runner for its role.
+    expect(h.runner.reviewTasks).toEqual([]);
+    expect(claude.reviewTasks.map((t) => t.role)).toEqual(['ui-reviewer']);
+    expect(claude.reviewTasks[0]?.prompt).toMatch(/^# Reviewer[\s\S]*# UI-review/);
+    expect(h.statusMessages()).toContain(
+      'Stage "implement", code, forsøg 1: frontend (label area:frontend) på codex.',
+    );
+    expect(h.events).toContainEqual(
+      expect.objectContaining({ type: 'turn', agent: 'frontend', runner: 'codex' }),
+    );
+    expect(h.store.attempts({ runId: run.id }).map((a) => [a.agent, a.runner, a.gate])).toEqual([
+      ['frontend', 'codex', null],
+      ['frontend', 'codex', 'ci'],
+      ['ui-reviewer', 'claude', 'review'],
+    ]);
+  });
+
+  it('falls back to the baseline agent without a matching label, and notes a missing context file', async () => {
+    const h = await harness({
+      files: {
+        '.factory/agents/frontend.md':
+          '---\nextends: implementer\nscope:\n  labels: [area:frontend]\n---\n# Frontend',
+        '.factory/agents/implementer.md':
+          '---\nextends: implementer\ncontext: [docs/missing.md]\n---\nBrug pnpm.',
+      },
+    });
+    h.github.issue = { ...h.github.issue, labels: [{ name: 'area:backend' }] };
+    await settle(h);
+    expect(h.runner.writeTasks.map((t) => t.role)).toEqual(['implementer']);
+    expect(h.statusMessages()).toContain(
+      'Kontekstfilen docs/missing.md fra implementer findes ikke.',
+    );
+    expect(h.statusMessages()).toContain(
+      'Stage "implement", code, forsøg 1: implementer (projektagent) på codex.',
+    );
   });
 
   it('uses a /factory workflow override for a new run', async () => {

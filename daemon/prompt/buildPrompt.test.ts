@@ -2,14 +2,7 @@ import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { factoryRoot } from '../config/projects.js';
-import {
-  buildPrompt,
-  findSpecPath,
-  loadAgentFile,
-  parseAgentFile,
-  readOptional,
-} from './buildPrompt.js';
+import { buildPrompt, findSpecPath, parseAgentFile, readOptional } from './buildPrompt.js';
 
 const issue = {
   number: 12,
@@ -29,23 +22,24 @@ describe('parseAgentFile', () => {
   it('treats a file without frontmatter as all body', () => {
     expect(parseAgentFile('# Just text\n')).toEqual({ frontmatter: {}, body: '# Just text' });
   });
-});
 
-describe('loadAgentFile', () => {
-  it('loads the baseline implementer shipped with the factory', async () => {
-    const agent = await loadAgentFile(join(factoryRoot, 'agents'), 'implementer');
-    expect(agent.frontmatter.role).toBe('implementer');
-    expect(agent.body).toMatch(/^# Implementer/);
-    expect(agent.body).toContain('Do not run `git commit`');
+  it('reads extends, scope, context and runner, and rejects keys it does not know', () => {
+    const file = parseAgentFile(
+      '---\nextends: implementer\nscope:\n  labels: [area:frontend]\ncontext: [docs/ui.md]\nrunner: codex\n---\n# Frontend\n',
+    );
+    expect(file.frontmatter).toEqual({
+      extends: 'implementer',
+      scope: { labels: ['area:frontend'] },
+      context: ['docs/ui.md'],
+      runner: 'codex',
+    });
+    expect(() => parseAgentFile('---\nscope:\n  paths: [src/]\n---\n')).toThrow(/paths/);
+    expect(() => parseAgentFile('---\nweight: 2\n---\n')).toThrow(/weight/);
   });
 
-  it('names the missing file for an unknown role, and rejects path tricks', async () => {
-    await expect(loadAgentFile(join(factoryRoot, 'agents'), 'astronaut')).rejects.toThrow(
-      /no agent file for role "astronaut"/,
-    );
-    await expect(loadAgentFile(join(factoryRoot, 'agents'), '../secrets')).rejects.toThrow(
-      /invalid role/,
-    );
+  it('keeps context inside the project', () => {
+    expect(() => parseAgentFile('---\ncontext: [../secrets.md]\n---\n')).toThrow(/relative path/);
+    expect(() => parseAgentFile('---\ncontext: [/etc/passwd]\n---\n')).toThrow(/relative path/);
   });
 });
 
@@ -88,6 +82,21 @@ describe('buildPrompt', () => {
       '# Spec (specs/m.md)\n\nSpec-tekst',
       '# Project rules (AGENTS.md)\n\nBrug pnpm.',
       '# Feedback from earlier attempts\n\n## Attempt 1\n\nCI fejlede: lint\n\n## Attempt 2\n\nReview: mangler test',
+    ]);
+  });
+
+  it('adds context files and the check command after the project rules', () => {
+    const prompt = buildPrompt({
+      agent: 'A',
+      issue,
+      agentsMd: 'Brug pnpm.',
+      context: [{ path: 'docs/ui.md', text: 'Brug designsystemet.' }],
+      checks: 'pnpm check',
+    });
+    expect(prompt.split('\n\n---\n\n').slice(2)).toEqual([
+      '# Project rules (AGENTS.md)\n\nBrug pnpm.',
+      '# Context (docs/ui.md)\n\nBrug designsystemet.',
+      '# Checks\n\nRun `pnpm check` before you finish. It must pass. Fix what fails, and list it in `testsRun`.',
     ]);
   });
 

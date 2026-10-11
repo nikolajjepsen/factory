@@ -31,10 +31,10 @@ ai-factory/                 fabrikkens eget repo (installeres én gang)
   agents/baseline/          generalister: analyst, spec, planner, implementer, reviewer, tester, docs
   dashboard/                kontrolrummet
   templates/                decision-brief, spec, adr, issue
-  projects.yml              tilkoblede projekter, vægte, fokus
+  projects.yml              tilkoblede projekter
 
 <projekt>/                  fx loge-app
-  .factory/project.yml      stack, CI-kommando, budget, runners
+  .factory/project.yml      tjek-kommando, runners pr. rolle
   .factory/agents/          projekt- og domæneagenter (valgfrit)
   AGENTS.md                 projektets grundlov (CLAUDE.md → @AGENTS.md)
   docs/vision.md  docs/adr/  specs/
@@ -44,7 +44,7 @@ ai-factory/                 fabrikkens eget repo (installeres én gang)
 
 Fabrikken er projektagnostisk. Den ejer motoren, og hvert projekt ejer sin egen viden.
 
-- **Agent-arv:** `baseline/implementer` → `<projekt>/implementer` → domænespecialist (fx `galleri`). En agent er en fil med `extends`, `scope` (labels, stier), `context` og evt. `runner`.
+- **Agent-arv:** `baseline/implementer` → `<projekt>/implementer` → domænespecialist (fx `galleri`). En agent er en fil med `extends`, `scope` (labels), `context` og evt. `runner`. Se `docs/agents.md`.
 - **Routing:** planneren sætter `area:`-labels. Daemonen vælger den mest specifikke agent, der matcher, og falder ellers tilbage til baseline.
 - **Læring:** gentagne review-fund i et domæne bliver til en PR mod specialistens fil, som Nikolaj godkender.
 - **Portefølje:** `projects.yml` lister projekterne. Boardets rækkefølge er prioriteten på tværs af dem. `focus` låser fabrikken til ét projekt, og hvert projekt kan tændes og slukkes. Projekterne er isoleret med egne worktrees og secrets.

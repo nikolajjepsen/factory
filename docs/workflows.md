@@ -7,7 +7,7 @@ Fabrikkens flow er ikke hårdkodet. Daemonen fortolker workflow-filer med en gen
 1. `agents/baseline/workflows/<id>.yml` – fabrikkens standarder: `feature`, `bugfix` og `chore`.
 2. `<projekt>/.factory/workflows/<id>.yml` – projektets egne. En fil med samme id erstatter baseline-filen helt.
 
-Agentfiler og rubrikker slås op på samme måde: først `<projekt>/.factory/agents/<navn>.md` og `<projekt>/.factory/rubrics/…`, derefter `agents/baseline/`.
+Rubrikker slås op på samme måde: først `<projekt>/.factory/rubrics/…`, derefter `agents/baseline/`. Agentfiler vælges ud fra issuets labels, se `docs/agents.md`.
 
 ## Hvilket workflow et issue får
 
@@ -24,7 +24,7 @@ stages:
   - id: implement
     agent: implementer
     strategy: direct              # direct | plan_then_code
-    runner: codex                 # valgfri; ellers default_runner fra factory.yml
+    runner: codex                 # valgfri; se "Runner" i docs/agents.md
     instructions: Ekstra besked til agenten i netop denne stage.
     gates:
       - ci
@@ -33,13 +33,13 @@ stages:
     on_fail: [retry_with_feedback x3, escalate: human]
 ```
 
-`pnpm factory workflow validate` tjekker skemaet og at agenter, rubrikker og runnere findes. CI kører den. Fejlbeskederne peger på filen og feltet, fx `→ at stages[0].on_fail[1].switch_strategy`.
+`pnpm factory workflow validate` tjekker skemaet og at agenter, rubrikker og runnere findes. Den tjekker også projektets agentfiler og `.factory/project.yml`. CI kører den. Fejlbeskederne peger på filen og feltet, fx `→ at stages[0].on_fail[1].switch_strategy`.
 
 ## Ordforråd
 
 | Nøgle | Adfærd |
 | --- | --- |
-| `agent: <navn>` | Agentfilen bliver til prompten sammen med issue, spec, `AGENTS.md`, stagens `instructions` og al feedback indtil nu. |
+| `agent: <navn>` | Rollen. Agent-laget vælger filen ud fra issuets `area:`-labels (se `docs/agents.md`). Agentfilen bliver til prompten sammen med issue, spec, `AGENTS.md`, agentens `context`, projektets `ci`-kommando, stagens `instructions` og al feedback indtil nu. |
 | `strategy: direct` | Én turn løser opgaven. |
 | `strategy: plan_then_code` | Første turn skriver `PLAN.md`. Gates med `on: plan` kører. Anden turn koder efter planen og sletter `PLAN.md`. |
 | gate `ci` | Venter på GitHub-tjek på den pushede commit (højst `ci_timeout_minutes`). Rødt CI giver fejlede tjek og et uddrag af jobloggen som feedback. |

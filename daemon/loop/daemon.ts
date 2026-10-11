@@ -98,6 +98,8 @@ export class Daemon {
   #halted = false;
   /** The workflow of the run in `#current`, for its progress steps. */
   #currentWorkflow: Workflow | undefined;
+  /** The runner of the turn in `#current`, once the engine has resolved it. */
+  #currentRunner: string | undefined;
   /** Aborted by a command, so a sleeping loop reacts at once. */
   #wake = new AbortController();
   #heartbeatAt: string | undefined;
@@ -231,6 +233,10 @@ export class Daemon {
       });
     }
     switch (event.type) {
+      case 'turn':
+        this.#currentRunner = event.runner;
+        if (this.#current) this.#current.runner = event.runner;
+        break;
       case 'status':
         this.#write(`${target}: ${event.message}`);
         break;
@@ -636,6 +642,7 @@ export class Daemon {
   async #step(run: RunState): Promise<void> {
     const controller = new AbortController();
     this.#currentAbort = controller;
+    this.#currentRunner = undefined;
     const item = this.#itemFor(run);
     this.#current = {
       project: run.project,
@@ -793,7 +800,11 @@ export class Daemon {
     const workflow = this.#currentWorkflow;
     const stage = workflow?.stages[run.stageIndex];
     return {
-      runner: run.overrides.runner ?? stage?.runner ?? this.#deps.config.default_runner,
+      runner:
+        this.#currentRunner ??
+        run.overrides.runner ??
+        stage?.runner ??
+        this.#deps.config.default_runner,
       steps: workflow ? stepsFor(workflow, run) : [],
     };
   }

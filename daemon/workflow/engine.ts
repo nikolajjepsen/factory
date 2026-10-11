@@ -1,5 +1,5 @@
 import type { Project } from '../config/projects.js';
-import type { GitHub, Issue } from '../github/github.js';
+import { type GitHub, type Issue, labelNames } from '../github/github.js';
 import {
   buildPrompt,
   buildReviewPrompt,
@@ -24,7 +24,7 @@ import {
   GateAborted,
   type GateResult,
 } from './gates.js';
-import type { AgentLibrary } from './load.js';
+import type { AgentLibrary, ProjectSettings, ResolvedAgent } from './load.js';
 import type { RunState } from './runState.js';
 import {
   describeGate,
@@ -47,6 +47,8 @@ export const LABELS = {
 
 export type EngineEvent =
   | { type: 'status'; run: RunState; message: string }
+  /** An agent turn starts: the resolved agent and the runner it runs on. */
+  | { type: 'turn'; run: RunState; agent: string; runner: string }
   | { type: 'agent'; run: RunState; event: RunEvent }
   | { type: 'gate'; run: RunState; gate: string; result: GateResult }
   | { type: 'ladder'; run: RunState; step: string };
@@ -84,7 +86,10 @@ interface StepContext {
   workflow: Workflow;
   stage: Stage;
   library: AgentLibrary;
+  settings: ProjectSettings;
   workspace: Workspace;
+  /** The stage's agent, resolved for the issue's labels. */
+  agent: ResolvedAgent;
   effective: Effective;
   signal: AbortSignal | undefined;
 }
@@ -210,6 +215,8 @@ export class WorkflowEngine {
     }
 
     const issue = await this.deps.github.getIssue(project.repo, run.issue);
+    const settings = await library.projectSettings();
+    const agent = await library.resolveAgent(run.overrides.agent ?? stage.agent, labelNames(issue));
     const workspace = await this.deps.worktrees.prepare({
       project: project.name,
       issue: run.issue,
@@ -223,10 +230,16 @@ export class WorkflowEngine {
       workflow,
       stage,
       library,
+      settings,
       workspace,
+      agent,
       effective: {
-        agent: run.overrides.agent ?? stage.agent,
-        runner: run.overrides.runner ?? stage.runner ?? this.deps.defaultRunner,
+        agent: agent.name,
+        runner:
+          run.overrides.runner ??
+          stage.runner ??
+          this.#runnerFor(agent, settings) ??
+          this.deps.defaultRunner,
         strategy: run.overrides.strategy ?? stage.strategy,
       },
       signal,
@@ -242,9 +255,11 @@ export class WorkflowEngine {
       const gate = gates[i];
       if (!gate) break;
       const started = this.deps.now().getTime();
+      const reviewer =
+        gate.kind === 'review' ? await this.#reviewer(gate.agent, run, ctx) : undefined;
       let result: GateResult;
       try {
-        result = await this.#evaluate(gate, run, ctx);
+        result = await this.#evaluate(gate, run, ctx, reviewer);
       } catch (error) {
         if (error instanceof GateAborted) return this.#stop(run, 'Afbrudt under en gate.');
         throw error;
@@ -252,7 +267,7 @@ export class WorkflowEngine {
       this.#emit({ type: 'gate', run, gate: describeGate(gate), result });
       if (result.kind === 'pending') return this.#enterWaiting(run, project, gate);
       this.#logAttempt(run, ctx, {
-        ...(gate.kind === 'review' && { agent: gate.agent }),
+        ...(reviewer && { agent: reviewer.agent.name, runner: reviewer.runner }),
         gate: gate.kind,
         score: result.score ?? null,
         passed: result.kind === 'pass',
@@ -299,10 +314,9 @@ export class WorkflowEngine {
 
   /** Runs the agent turn. Returns the run when the step ends here, undefined to go on to gates. */
   async #agentTurn(run: RunState, ctx: StepContext): Promise<RunState | undefined> {
-    const { project, issue, stage, library, workspace, effective } = ctx;
+    const { project, issue, stage, library, workspace, effective, agent } = ctx;
     const runner = this.deps.runners.get(effective.runner);
     if (!runner) return this.#block(run, project, `Runneren "${effective.runner}" findes ikke.`);
-    const agent = await library.loadAgent(effective.agent);
     const instructions = [
       ...(stage.instructions ? [stage.instructions] : []),
       ...(run.phase === 'plan' ? [PLAN_INSTRUCTIONS] : []),
@@ -313,14 +327,16 @@ export class WorkflowEngine {
     const prompt = buildPrompt({
       agent: agent.body,
       issue: issueInput(issue),
-      ...(await this.#context(issue, workspace)),
+      ...(await this.#context(run, issue, workspace, agent)),
+      ...(ctx.settings.ci && { checks: ctx.settings.ci }),
       feedback: run.feedback,
       instructions,
     });
     this.#status(
       run,
-      `Stage "${stage.id}", ${run.phase}, forsøg ${String(run.attempt)}: ${effective.agent} på ${effective.runner}.`,
+      `Stage "${stage.id}", ${run.phase}, forsøg ${String(run.attempt)}: ${agent.name} (${agent.reason}) på ${effective.runner}.`,
     );
+    this.#emit({ type: 'turn', run, agent: agent.name, runner: effective.runner });
     const started = this.deps.now().getTime();
     let report: RunReport | undefined;
     const task = {
@@ -376,8 +392,36 @@ export class WorkflowEngine {
     return undefined;
   }
 
-  async #evaluate(gate: Gate, run: RunState, ctx: StepContext): Promise<GateResult> {
-    const { project, issue, library, workspace, effective, signal } = ctx;
+  /**
+   * The reviewer of a review gate, resolved for the issue's labels like the stage's agent. Its
+   * runner: a runner override, the reviewer's own, the project's for its role, the stage's.
+   */
+  async #reviewer(
+    name: string,
+    run: RunState,
+    ctx: StepContext,
+  ): Promise<{ agent: ResolvedAgent; runner: string }> {
+    const agent = await ctx.library.resolveAgent(name, labelNames(ctx.issue));
+    const runner =
+      run.overrides.runner ??
+      this.#runnerFor(agent, ctx.settings) ??
+      ctx.stage.runner ??
+      this.deps.defaultRunner;
+    return { agent, runner };
+  }
+
+  /** The runner an agent asks for itself, or the project's runner for its role. */
+  #runnerFor(agent: ResolvedAgent, settings: ProjectSettings): string | undefined {
+    return agent.runner ?? settings.runners[agent.role];
+  }
+
+  async #evaluate(
+    gate: Gate,
+    run: RunState,
+    ctx: StepContext,
+    reviewer: { agent: ResolvedAgent; runner: string } | undefined,
+  ): Promise<GateResult> {
+    const { project, issue, library, workspace, signal } = ctx;
     switch (gate.kind) {
       case 'ci':
         if (!run.pr)
@@ -392,16 +436,17 @@ export class WorkflowEngine {
           signal,
         );
       case 'review': {
-        const runner = this.deps.runners.get(effective.runner);
+        if (!reviewer) throw new Error('a review gate needs its reviewer');
+        const runner = this.deps.runners.get(reviewer.runner);
         if (!runner)
-          return { kind: 'fail', feedback: `Runneren "${effective.runner}" findes ikke.` };
+          return { kind: 'fail', feedback: `Runneren "${reviewer.runner}" findes ikke.` };
         const plan =
           run.phase === 'plan' ? await readOptional(workspace.path, 'PLAN.md') : undefined;
         const prompt = buildReviewPrompt({
-          agent: (await library.loadAgent(gate.agent)).body,
+          agent: reviewer.agent.body,
           rubric: await library.loadRubric(gate.rubric),
           issue: issueInput(issue),
-          ...(await this.#context(issue, workspace)),
+          ...(await this.#context(run, issue, workspace, reviewer.agent)),
           subject:
             run.phase === 'plan'
               ? { kind: 'plan', plan: plan ?? '(PLAN.md mangler)' }
@@ -415,7 +460,7 @@ export class WorkflowEngine {
           runner,
           {
             id: `${run.project}#${String(run.issue)}`,
-            role: gate.agent,
+            role: reviewer.agent.name,
             prompt,
             workspace,
             ...(signal && { signal }),
@@ -577,13 +622,22 @@ export class WorkflowEngine {
     return run;
   }
 
-  async #context(issue: Issue, workspace: Workspace) {
+  /** Spec, AGENTS.md and the agent's `context` files, read from the worktree. */
+  async #context(run: RunState, issue: Issue, workspace: Workspace, agent: ResolvedAgent) {
     const specPath = findSpecPath(issue.body);
     const specText = specPath ? await readOptional(workspace.path, specPath) : undefined;
     const agentsMd = await readOptional(workspace.path, 'AGENTS.md');
+    const context: { path: string; text: string }[] = [];
+    for (const path of agent.context) {
+      const text = await readOptional(workspace.path, path);
+      if (text === undefined)
+        this.#status(run, `Kontekstfilen ${path} fra ${agent.name} findes ikke.`);
+      else context.push({ path, text });
+    }
     return {
       ...(specPath && specText !== undefined && { spec: { path: specPath, text: specText } }),
       ...(agentsMd !== undefined && { agentsMd }),
+      ...(context.length > 0 && { context }),
     };
   }
 
@@ -591,8 +645,9 @@ export class WorkflowEngine {
     run: RunState,
     ctx: StepContext,
     result: {
-      /** Defaults to the stage's agent; a review gate logs its reviewer. */
+      /** Default to the stage's agent and runner; a review gate logs its reviewer. */
       agent?: string;
+      runner?: string;
       gate: string | null;
       score: number | null;
       passed: boolean;
@@ -608,10 +663,10 @@ export class WorkflowEngine {
       stage: ctx.stage.id,
       attempt: run.attempt,
       phase: run.phase,
-      runner: ctx.effective.runner,
       strategy: ctx.effective.strategy,
       ...result,
       agent: result.agent ?? ctx.effective.agent,
+      runner: result.runner ?? ctx.effective.runner,
     });
   }
 
