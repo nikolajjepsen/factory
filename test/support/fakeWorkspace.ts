@@ -26,6 +26,16 @@ export class FakeWorkspace implements Workspace {
     return Promise.resolve([...this.shas]);
   }
 
+  diffText = 'diff --git a/x b/x';
+
+  head(): Promise<string> {
+    return Promise.resolve(this.shas.at(-1) ?? 'base');
+  }
+
+  diff(): Promise<string> {
+    return Promise.resolve(this.diffText);
+  }
+
   push(): Promise<void> {
     this.pushed++;
     return Promise.resolve();

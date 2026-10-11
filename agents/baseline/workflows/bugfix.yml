@@ -1,0 +1,16 @@
+description: En fejlrettelse. Først en test, der reproducerer fejlen, så rettelsen.
+stages:
+  - id: reproduce
+    agent: reproducer
+    gates:
+      - review: { agent: reviewer, rubric: rubrics/reproduction.md, min_score: 7 }
+    on_fail: [retry_with_feedback x2, escalate: human]
+  - id: fix
+    agent: implementer
+    instructions: >-
+      A test that reproduces the bug is already on the branch. Fix the bug so that test and all
+      other checks pass. Do not weaken or delete the reproducing test.
+    gates:
+      - ci
+      - review: { agent: reviewer, rubric: rubrics/code.md, min_score: 7 }
+    on_fail: [retry_with_feedback x3, escalate: human]

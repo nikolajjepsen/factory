@@ -4,6 +4,13 @@
 
 ### Tilføjet
 
+- M3a: Workflow-motoren fortolker `agents/baseline/workflows/*.yml` og `<projekt>/.factory/workflows/*.yml` (override pr. fil-id) med ordforrådet `agent`, `strategy` (`direct`, `plan_then_code`), gates (`ci`, `review`, `human`) og eskaleringsstigen (`retry_with_feedback xN`, `switch_strategy`, `switch_runner`, `switch_agent`, `escalate: human`). Se `docs/workflows.md`.
+- M3a: `factory run` kører nu issuets workflow. `--role` kører som før kun én turn. `--workflow` vælger workflow.
+- M3a: Kørsler gemmes i SQLite (`~/.ai-factory/state.db`) og kan genoptages. Hver agent-turn og gate logges i `attempts`. `factory log` viser loggen.
+- M3a: `factory workflow validate` validerer workflows, agenter og rubrikker. CI kører den (**ændring i `.github/workflows/ci.yml`**).
+- M3a: Baseline-workflows `feature`, `bugfix` og `chore`, agenterne `reviewer` og `reproducer` og rubrikkerne `code`, `reproduction` og `plan`.
+- M3a: `factory.yml` med board, `owner_login`, `status_repo`, `default_runner` og CI-timeout.
+- Runner-kontrakten understøtter læseopgaver (`readOnly`): skrivebeskyttet sandkasse, eget svarskema, ingen commit.
 - M2: `factory run --project <navn> --issue <n> [--role implementer]` løser et issue i et git worktree, pusher branchen og åbner en PR. Ctrl-C afbryder turnen og gemmer arbejdet som en WIP-commit. Se `docs/runner.md`.
 - M2: Runner-kontrakten (`Runner.run(task): AsyncIterable<RunEvent>` → `RunReport`) og Codex-runneren via app-server threads/turns med sandkasse kun til worktree'et og strukturerede slutrapporter (`outputSchema`).
 - M2: Fabrikken committer selv som `ai-factory` efter hver turn. Agenten kan ikke committe fra sandkassen.

@@ -17,6 +17,10 @@ export interface Workspace {
   /** Commits on the branch since `baseRef`, oldest first. */
   commits(): Promise<string[]>;
   push(): Promise<void>;
+  /** The sha of HEAD. */
+  head(): Promise<string>;
+  /** The branch's changes against `baseRef` as a unified diff. */
+  diff(): Promise<string>;
 }
 
 /** Commits made by the factory are attributed to it, not to the person who owns the machine. */
@@ -64,6 +68,14 @@ export class GitWorkspace implements Workspace {
   async commits(): Promise<string[]> {
     const out = await git(this.path, ['rev-list', '--reverse', `${this.baseRef}..HEAD`]);
     return out === '' ? [] : out.split('\n');
+  }
+
+  head(): Promise<string> {
+    return git(this.path, ['rev-parse', 'HEAD']);
+  }
+
+  diff(): Promise<string> {
+    return git(this.path, ['diff', `${this.baseRef}...HEAD`]);
   }
 
   async push(): Promise<void> {

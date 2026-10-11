@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { RunEvent, RunReport, RunTask } from '../../daemon/runner/runner.js';
 import {
   codexResponder,
@@ -160,6 +161,7 @@ describe('CodexRunner on a completed turn', () => {
       branch: workspace.branch,
       commits: ['sha1'],
       tokens: { input: 32432, output: 225, total: 32657 },
+      output: validReport,
     });
   });
 
@@ -303,5 +305,52 @@ describe('CodexRunner failures', () => {
       status: 'failed',
       summary: 'thread/start failed with -32600: bad cwd',
     });
+  });
+});
+
+describe('CodexRunner read-only tasks', () => {
+  const Review = z.object({
+    score: z.number(),
+    passed: z.boolean(),
+    feedback: z.array(z.string()),
+  });
+  const review = { score: 8, passed: true, feedback: [] };
+
+  it('uses a read-only sandbox and the task schema, and commits nothing', async () => {
+    const { runner, workspace, fakes } = await setup(
+      replay(completed, {
+        notifications: withFinalAnswer(completed.notifications, JSON.stringify(review)),
+      }),
+    );
+    const { report } = await runToEnd(runner, {
+      ...taskFor(workspace),
+      readOnly: { schema: Review },
+    });
+    const sent = fakes.latest().sent;
+    expect(sent.find((m) => m.method === 'thread/start')?.params).toMatchObject({
+      sandbox: 'read-only',
+    });
+    const turnStart = sent.find((m) => m.method === 'turn/start')?.params as Record<
+      string,
+      unknown
+    >;
+    expect(turnStart.sandboxPolicy).toEqual({ type: 'readOnly', networkAccess: false });
+    expect(turnStart.outputSchema).toMatchObject({ required: ['score', 'passed', 'feedback'] });
+    expect(report).toMatchObject({ status: 'success', output: review, commits: [] });
+    expect(workspace.commitMessages).toEqual([]);
+  });
+
+  it('fails when the answer does not match the task schema', async () => {
+    const { runner, workspace } = await setup(
+      replay(completed, {
+        notifications: withFinalAnswer(completed.notifications, JSON.stringify(validReport)),
+      }),
+    );
+    const { report } = await runToEnd(runner, {
+      ...taskFor(workspace),
+      readOnly: { schema: Review },
+    });
+    expect(report.status).toBe('failed');
+    expect(report.summary).toMatch(/forkert form/);
   });
 });

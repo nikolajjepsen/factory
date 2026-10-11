@@ -3,44 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { factoryRoot } from '../config/projects.js';
-import type { CreatePullRequest, GitHub, Issue, PullRequest } from '../github/github.js';
 import type { RunEvent, Runner, RunReport, RunTask } from '../runner/runner.js';
 import type { PrepareOptions } from '../workspace/workspace.js';
+import { FakeGitHub } from '../../test/support/fakeGitHub.js';
 import { FakeWorkspace } from '../../test/support/fakeWorkspace.js';
 import { pullRequestBody, runIssue } from './runIssue.js';
 
 const project = { name: 'demo', repo: 'o/demo', path: '/repos/demo' };
-
-class FakeGitHub implements GitHub {
-  issue: Issue = {
-    number: 12,
-    title: 'Tilføj add()',
-    body: 'Se specs/add.md',
-    html_url: 'https://github.com/o/demo/issues/12',
-    state: 'open',
-    labels: [],
-  };
-  existingPr: PullRequest | undefined;
-  created: { repo: string; pr: CreatePullRequest }[] = [];
-
-  getIssue() {
-    return Promise.resolve(this.issue);
-  }
-  findOpenPullRequest() {
-    return Promise.resolve(this.existingPr);
-  }
-  createPullRequest(repo: string, pr: CreatePullRequest) {
-    this.created.push({ repo, pr });
-    return Promise.resolve({
-      number: 5,
-      html_url: 'https://github.com/o/demo/pull/5',
-      state: 'open',
-    });
-  }
-  getDefaultBranch() {
-    return Promise.resolve('main');
-  }
-}
 
 /** Commits once (if asked) and ends with the given report status. */
 class FakeRunner implements Runner {

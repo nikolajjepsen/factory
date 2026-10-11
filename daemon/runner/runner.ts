@@ -22,6 +22,11 @@ export interface RunTask {
   workspace: Workspace;
   /** Aborting interrupts the turn. The work so far is committed as WIP. */
   signal?: AbortSignal;
+  /**
+   * Set for tasks that only look, such as reviews: the sandbox is read-only, the final answer
+   * follows `schema` instead of AgentReport, and nothing is committed.
+   */
+  readOnly?: { schema: z.ZodType };
 }
 
 export interface TokenUsage {
@@ -38,6 +43,8 @@ export interface RunReport {
   /** Commits on the branch since its base, oldest first. */
   commits: string[];
   tokens?: TokenUsage;
+  /** The parsed final answer: an AgentReport, or the `readOnly.schema` result. */
+  output?: unknown;
 }
 
 export type RunEvent =

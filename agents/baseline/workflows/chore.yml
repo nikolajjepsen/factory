@@ -1,0 +1,7 @@
+description: Vedligehold uden ny adfærd. Kun CI afgør.
+stages:
+  - id: implement
+    agent: implementer
+    gates:
+      - ci
+    on_fail: [retry_with_feedback x2, escalate: human]

@@ -1,15 +1,23 @@
 import { Command } from 'commander';
 import pkg from '../../package.json' with { type: 'json' };
+import { type LogCommandDeps, registerLogCommand } from './commands/log.js';
 import { type QuotaCommandDeps, registerQuotaCommand } from './commands/quota.js';
 import { registerRunCommand, type RunCommandDeps } from './commands/run.js';
+import { registerWorkflowCommand, type WorkflowCommandDeps } from './commands/workflow.js';
 
 export const version: string = pkg.version;
 
-/** The I/O each command needs. Only the domain entry points are required; the rest default. */
-export type CliDeps = Pick<QuotaCommandDeps, 'openQuotaSource'> &
-  Pick<RunCommandDeps, 'runIssue'> &
-  Partial<Omit<QuotaCommandDeps, 'openQuotaSource'>> &
-  Partial<Omit<RunCommandDeps, 'runIssue'>>;
+/** The domain entry points each command needs. Process I/O defaults to the real process. */
+export interface CliDeps
+  extends
+    Pick<QuotaCommandDeps, 'openQuotaSource'>,
+    Pick<RunCommandDeps, 'runIssue' | 'runWorkflow'>,
+    Pick<WorkflowCommandDeps, 'validateWorkflows'>,
+    Pick<LogCommandDeps, 'attempts'>,
+    Partial<Pick<QuotaCommandDeps, 'now' | 'timeZone'>>,
+    Partial<Pick<RunCommandDeps, 'onInterrupt' | 'forceExit' | 'setExitCode'>> {
+  stdout?: (text: string) => void;
+}
 
 function onSigint(handler: () => void): () => void {
   process.on('SIGINT', handler);
@@ -28,18 +36,28 @@ export function createProgram(deps: CliDeps): Command {
     .helpCommand(false);
   const stdout = deps.stdout ?? ((text: string) => process.stdout.write(text));
   registerQuotaCommand(program, {
-    now: () => new Date(),
-    ...deps,
+    openQuotaSource: deps.openQuotaSource,
+    now: deps.now ?? (() => new Date()),
     stdout,
+    ...(deps.timeZone && { timeZone: deps.timeZone }),
   });
   registerRunCommand(program, {
-    onInterrupt: onSigint,
-    forceExit: (code) => process.exit(code),
-    setExitCode: (code) => {
-      process.exitCode = code;
-    },
-    ...deps,
+    runIssue: deps.runIssue,
+    runWorkflow: deps.runWorkflow,
     stdout,
+    onInterrupt: deps.onInterrupt ?? onSigint,
+    forceExit: deps.forceExit ?? ((code) => process.exit(code)),
+    setExitCode:
+      deps.setExitCode ??
+      ((code) => {
+        process.exitCode = code;
+      }),
+  });
+  registerWorkflowCommand(program, { validateWorkflows: deps.validateWorkflows, stdout });
+  registerLogCommand(program, {
+    attempts: deps.attempts,
+    stdout,
+    ...(deps.timeZone && { timeZone: deps.timeZone }),
   });
   return program;
 }

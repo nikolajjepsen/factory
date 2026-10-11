@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1",
+    "better-sqlite3": "^13.0.3",
     "commander": "^15.0.0",
     "tsx": "^4.23.15",
     "yaml": "^2.9.1",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.20.5",
     "eslint": "^10.12.0",
     "eslint-config-prettier": "^10.1.8",

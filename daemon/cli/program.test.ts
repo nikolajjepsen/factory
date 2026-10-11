@@ -7,6 +7,9 @@ import pkg from '../../package.json' with { type: 'json' };
 import type { QuotaSnapshot } from '../quota/quota.js';
 import type { RunIssueResult } from '../run/runIssue.js';
 import type { RunEvent, RunReport } from '../runner/runner.js';
+import type { AttemptRecord } from '../store/store.js';
+import type { EngineEvent } from '../workflow/engine.js';
+import type { RunState } from '../workflow/runState.js';
 import type { QuotaCommandSource } from './commands/quota.js';
 import { EXIT_INTERRUPTED, type RunCommandOptions } from './commands/run.js';
 import { type CliDeps, createProgram, version } from './program.js';
@@ -48,6 +51,9 @@ async function run(args: string[], deps: Partial<CliDeps> = {}) {
   const program = createProgram({
     openQuotaSource: () => Promise.resolve(fakeQuotaSource().source),
     runIssue: () => Promise.reject(new Error('runIssue not expected in this test')),
+    runWorkflow: () => Promise.reject(new Error('runWorkflow not expected in this test')),
+    validateWorkflows: () => Promise.resolve({ checked: [], problems: [], skipped: [] }),
+    attempts: () => Promise.resolve([]),
     now: () => new Date('2026-10-11T16:21:33.000Z'),
     timeZone: 'Europe/Copenhagen',
     stdout: (text) => (stdout += text),
@@ -145,7 +151,7 @@ describe('factory quota', () => {
   });
 });
 
-describe('factory run', () => {
+describe('factory run --role', () => {
   const report: RunReport = {
     status: 'success',
     summary: 'Tilføjede add().',
@@ -172,7 +178,18 @@ describe('factory run', () => {
       { type: 'error', message: 'reconnecting' },
     ];
     const out = await run(
-      ['run', '--project', 'demo', '--issue', '#12', '--model', 'gpt-x', '--network'],
+      [
+        'run',
+        '--project',
+        'demo',
+        '--issue',
+        '#12',
+        '--role',
+        'implementer',
+        '--model',
+        'gpt-x',
+        '--network',
+      ],
       {
         runIssue: (options, onEvent) => {
           calls.push(options);
@@ -206,20 +223,26 @@ describe('factory run', () => {
   });
 
   it('says so when a successful run changed nothing', async () => {
-    const out = await run(['run', '--project', 'demo', '--issue', '12'], {
+    const out = await run(['run', '--project', 'demo', '--issue', '12', '--role', 'implementer'], {
       runIssue: () => Promise.resolve(result({ commits: [] }, false)),
     });
     expect(out.stdout).toContain('Ingen ændringer at pushe, så ingen PR.');
   });
 
   it('exits 1 for a failed run and 130 for an interrupted one', async () => {
-    const failed = await run(['run', '--project', 'demo', '--issue', '12'], {
-      runIssue: () => Promise.resolve(result({ status: 'failed' }, false)),
-    });
+    const failed = await run(
+      ['run', '--project', 'demo', '--issue', '12', '--role', 'implementer'],
+      {
+        runIssue: () => Promise.resolve(result({ status: 'failed' }, false)),
+      },
+    );
     expect(failed.exitCode).toBe(1);
-    const interrupted = await run(['run', '--project', 'demo', '--issue', '12'], {
-      runIssue: () => Promise.resolve(result({ status: 'interrupted' }, false)),
-    });
+    const interrupted = await run(
+      ['run', '--project', 'demo', '--issue', '12', '--role', 'implementer'],
+      {
+        runIssue: () => Promise.resolve(result({ status: 'interrupted' }, false)),
+      },
+    );
     expect(interrupted.exitCode).toBe(EXIT_INTERRUPTED);
     expect(interrupted.stdout).toContain('Status: afbrudt');
   });
@@ -228,7 +251,7 @@ describe('factory run', () => {
     let interrupt: (() => void) | undefined;
     const forced: number[] = [];
     let aborted = false;
-    const out = await run(['run', '--project', 'demo', '--issue', '12'], {
+    const out = await run(['run', '--project', 'demo', '--issue', '12', '--role', 'implementer'], {
       onInterrupt: (handler) => {
         interrupt = handler;
         return () => (interrupt = undefined);
@@ -248,7 +271,7 @@ describe('factory run', () => {
   });
 
   it('reports setup errors in Danish with exit code 1', async () => {
-    const out = await run(['run', '--project', 'nope', '--issue', '12'], {
+    const out = await run(['run', '--project', 'nope', '--issue', '12', '--role', 'implementer'], {
       runIssue: () => Promise.reject(new Error('Ukendt projekt "nope".')),
     });
     expect(out.exitCode).toBe(1);
@@ -260,5 +283,160 @@ describe('factory run', () => {
       'skal være et issue-nummer',
     );
     expect((await run(['run', '--issue', '12'])).exitCode).toBe(1);
+  });
+});
+
+describe('factory run (workflow)', () => {
+  const state = (overrides: Partial<RunState> = {}): RunState => ({
+    id: 'r1',
+    project: 'demo',
+    issue: 12,
+    workflow: 'feature',
+    status: 'done',
+    branch: 'factory/12-x',
+    stageIndex: 0,
+    phase: 'code',
+    attempt: 2,
+    ladderIndex: 0,
+    ladderUsed: 1,
+    overrides: {},
+    feedback: [],
+    turnDone: true,
+    gateIndex: 2,
+    pr: { number: 5, url: 'https://github.com/o/demo/pull/5' },
+    createdAt: '2026-10-11T18:00:00.000Z',
+    updatedAt: '2026-10-11T18:00:00.000Z',
+    ...overrides,
+  });
+
+  it('runs the workflow and prints status, agent, gate and ladder events', async () => {
+    const options: RunCommandOptions[] = [];
+    const out = await run(['run', '--project', 'demo', '--issue', '12', '--workflow', 'chore'], {
+      runWorkflow: (o, onEvent) => {
+        options.push(o);
+        const r = state();
+        const events: EngineEvent[] = [
+          { type: 'status', run: r, message: 'Starter workflow "chore" (/factory workflow).' },
+          {
+            type: 'agent',
+            run: r,
+            event: { type: 'command', command: 'npm test', exitCode: 1, status: 'completed' },
+          },
+          {
+            type: 'gate',
+            run: r,
+            gate: 'review (reviewer, min 7)',
+            result: { kind: 'fail', score: 5, feedback: '- Mangler test\n- Navngivning' },
+          },
+          { type: 'ladder', run: r, step: 'retry_with_feedback x3' },
+          { type: 'gate', run: r, gate: 'ci', result: { kind: 'pass' } },
+          { type: 'gate', run: r, gate: 'human: always', result: { kind: 'pending' } },
+        ];
+        events.forEach(onEvent);
+        return Promise.resolve(r);
+      },
+    });
+    expect(options).toEqual([{ project: 'demo', issue: 12, workflow: 'chore' }]);
+    expect(out.exitCode).toBe(0);
+    expect(out.stdout).toBe(
+      [
+        'Kører workflow på demo#12',
+        '» Starter workflow "chore" (/factory workflow).',
+        '[kommando] npm test → exit 1',
+        '[gate] review (reviewer, min 7): fejlet (5/10)',
+        '    - Mangler test',
+        '    - Navngivning',
+        '[stige] retry_with_feedback x3',
+        '[gate] ci: bestået',
+        '[gate] human: always: venter',
+        '',
+        'Status: færdig, klar til merge',
+        'Workflow: feature',
+        'Branch: factory/12-x',
+        'PR: https://github.com/o/demo/pull/5',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('exits 1 when blocked and 130 when stopped, and says how to continue', async () => {
+    const blocked = await run(['run', '--project', 'demo', '--issue', '12'], {
+      runWorkflow: () =>
+        Promise.resolve(state({ status: 'blocked', reason: 'Eskaleret til et menneske.' })),
+    });
+    expect(blocked.exitCode).toBe(1);
+    expect(blocked.stdout).toContain('Årsag: Eskaleret til et menneske.');
+    const stopped = await run(['run', '--project', 'demo', '--issue', '12'], {
+      runWorkflow: () => Promise.resolve(state({ status: 'stopped' })),
+    });
+    expect(stopped.exitCode).toBe(EXIT_INTERRUPTED);
+    expect(stopped.stdout).toContain('Fortsæt med: factory run --project demo --issue 12');
+  });
+});
+
+describe('factory workflow validate', () => {
+  it('lists what was checked and skipped, and exits 0 when all is valid', async () => {
+    const out = await run(['workflow', 'validate'], {
+      validateWorkflows: () =>
+        Promise.resolve({
+          checked: ['baseline: bugfix, chore, feature'],
+          problems: [],
+          skipped: ['loge-app (/x findes ikke her)'],
+        }),
+    });
+    expect(out).toEqual({
+      stdout:
+        '✓ baseline: bugfix, chore, feature\n- sprunget over: loge-app (/x findes ikke her)\n',
+      stderr: '',
+      exitCode: 0,
+    });
+  });
+
+  it('prints every problem and exits 1', async () => {
+    const out = await run(['workflow', 'validate'], {
+      validateWorkflows: () =>
+        Promise.resolve({
+          checked: [],
+          problems: ['a.yml: unknown agent "x"', 'b.yml is invalid'],
+          skipped: [],
+        }),
+    });
+    expect(out.exitCode).toBe(1);
+    expect(out.stderr).toBe('✖ a.yml: unknown agent "x"\n✖ b.yml is invalid\n');
+  });
+});
+
+describe('factory log', () => {
+  it('prints one line per attempt with the first feedback line for failures', async () => {
+    const attempt: AttemptRecord & { createdAt: string } = {
+      runId: 'r1',
+      project: 'demo',
+      issue: 12,
+      stage: 'implement',
+      attempt: 1,
+      phase: 'code',
+      agent: 'reviewer',
+      runner: 'codex',
+      strategy: 'direct',
+      gate: 'review',
+      score: 5,
+      passed: false,
+      feedback: 'Review gav 5/10 (kræver 7).\n- Mangler test',
+      tokens: 1200,
+      durationMs: 31_400,
+      createdAt: '2026-10-11T18:05:00.000Z',
+    };
+    const out = await run(['log', '--project', 'demo', '--issue', '12'], {
+      attempts: () => Promise.resolve([attempt]),
+    });
+    expect(out.stdout).toBe(
+      '2026-10-11 20:05:00  implement#1 code  reviewer@codex (direct)  gate review: fejl 5/10 1200 tokens 31s\n    Review gav 5/10 (kræver 7).\n',
+    );
+  });
+
+  it('says so when nothing is logged', async () => {
+    expect((await run(['log', '--project', 'demo', '--issue', '12'])).stdout).toBe(
+      'Ingen forsøg logget for dette issue.\n',
+    );
   });
 });

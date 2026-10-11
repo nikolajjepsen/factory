@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { FakeWorkspace } from '../../test/support/fakeWorkspace.js';
 import { finishRun } from './finishRun.js';
 import type { AgentReport, RunTask } from './runner.js';
@@ -19,7 +20,7 @@ describe('finishRun', () => {
     const t = task();
     const result = await finishRun(t, {
       kind: 'completed',
-      report,
+      output: report,
       tokens: { input: 1, output: 2, total: 3 },
     });
     expect(t.workspace.commitMessages).toEqual(['Add add() with test']);
@@ -30,6 +31,7 @@ describe('finishRun', () => {
       branch: 'factory/1-demo',
       commits: ['sha1'],
       tokens: { input: 1, output: 2, total: 3 },
+      output: report,
     });
   });
 
@@ -37,7 +39,7 @@ describe('finishRun', () => {
     const t = task();
     const result = await finishRun(t, {
       kind: 'completed',
-      report: { ...report, status: 'blocked' },
+      output: { ...report, status: 'blocked' },
     });
     expect(result.status).toBe('failed');
     expect(result.summary).toBe(report.summary);
@@ -74,8 +76,36 @@ describe('finishRun', () => {
   it('reports no commits when nothing changed', async () => {
     const workspace = new FakeWorkspace();
     workspace.dirty = false;
-    const result = await finishRun(task(workspace), { kind: 'completed', report });
+    const result = await finishRun(task(workspace), { kind: 'completed', output: report });
     expect(result.commits).toEqual([]);
     expect(workspace.commitMessages).toEqual([]);
+  });
+
+  describe('read-only tasks', () => {
+    const readOnly = { schema: z.object({ score: z.number() }) };
+
+    it('never commits and returns the parsed output', async () => {
+      const t = { ...task(), readOnly };
+      const result = await finishRun(t, { kind: 'completed', output: { score: 8 } });
+      expect(t.workspace.commitMessages).toEqual([]);
+      expect(result).toEqual({
+        status: 'success',
+        summary: '',
+        testsRun: [],
+        branch: 'factory/1-demo',
+        commits: [],
+        output: { score: 8 },
+      });
+    });
+
+    it('carries failures and interruptions without committing', async () => {
+      const t = { ...task(), readOnly };
+      expect(await finishRun(t, { kind: 'failed', error: 'nope' })).toMatchObject({
+        status: 'failed',
+        summary: 'nope',
+      });
+      expect((await finishRun(t, { kind: 'interrupted' })).status).toBe('interrupted');
+      expect(t.workspace.commitMessages).toEqual([]);
+    });
   });
 });

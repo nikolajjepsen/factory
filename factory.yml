@@ -1,0 +1,25 @@
+# Fabrikkens egen konfiguration. M4 tilføjer kvoteregler, M5a API-porten.
+
+# GitHub Project-boardet, fabrikken henter arbejde fra. Rækkefølgen i "ready" er prioriteten.
+board:
+  owner: nikolajjepsen
+  number: 1
+  # Navnene på Status-kolonnerne på boardet.
+  status:
+    ready: Ready
+    in_progress: In progress
+    review: In review
+    done: Done
+
+# Kun kommentarer fra denne GitHub-bruger udføres som /factory-kommandoer.
+owner_login: nikolajjepsen
+
+# Repoet med det fastgjorte "Factory Status"-issue.
+status_repo: nikolajjepsen/factory
+
+# Runneren, workflows bruger, når en stage ikke vælger en anden.
+default_runner: codex
+
+limits:
+  # Hvor længe CI-gaten venter på, at tjek bliver færdige.
+  ci_timeout_minutes: 30

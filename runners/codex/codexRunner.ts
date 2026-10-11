@@ -59,8 +59,12 @@ const TokenUsageParams = z.looseObject({
   }),
 });
 
-const agentReportSchema: Record<string, unknown> = { ...z.toJSONSchema(AgentReport) };
-delete agentReportSchema.$schema;
+/** The JSON Schema Codex enforces on the final answer, without the `$schema` key. */
+function outputSchemaFor(schema: z.ZodType): Record<string, unknown> {
+  const json: Record<string, unknown> = { ...z.toJSONSchema(schema) };
+  delete json.$schema;
+  return json;
+}
 
 export interface CodexRunnerOptions {
   /** A started client. The runner shares it and never stops it. */
@@ -116,12 +120,13 @@ export class CodexRunner implements Runner {
     try {
       if (task.signal?.aborted) return { kind: 'interrupted' };
       const cwd = task.workspace.path;
+      const schema = task.readOnly?.schema ?? AgentReport;
       const { thread } = await this.#client.request(
         'thread/start',
         {
           cwd,
           approvalPolicy: 'never',
-          sandbox: 'workspace-write',
+          sandbox: task.readOnly ? 'read-only' : 'workspace-write',
           ephemeral: true,
           ...(this.#model && { model: this.#model }),
         },
@@ -190,14 +195,16 @@ export class CodexRunner implements Runner {
         {
           threadId,
           input: [{ type: 'text', text: task.prompt, text_elements: [] }],
-          sandboxPolicy: {
-            type: 'workspaceWrite',
-            writableRoots: [cwd],
-            networkAccess: this.#networkAccess,
-            excludeTmpdirEnvVar: false,
-            excludeSlashTmp: false,
-          },
-          outputSchema: agentReportSchema,
+          sandboxPolicy: task.readOnly
+            ? { type: 'readOnly', networkAccess: false }
+            : {
+                type: 'workspaceWrite',
+                writableRoots: [cwd],
+                networkAccess: this.#networkAccess,
+                excludeTmpdirEnvVar: false,
+                excludeSlashTmp: false,
+              },
+          outputSchema: outputSchemaFor(schema),
         },
         TurnStartResponse,
       );
@@ -242,7 +249,7 @@ export class CodexRunner implements Runner {
             error: `Codex-turnen fejlede: ${end.error ?? lastError ?? 'ukendt fejl'}`,
           });
         default:
-          return withTokens(parseFinalAnswer(finalAnswer));
+          return withTokens(parseFinalAnswer(finalAnswer, schema));
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -260,7 +267,7 @@ function relativeToWorktree(cwd: string, path: string): string {
   return rel.startsWith('..') ? path : rel;
 }
 
-function parseFinalAnswer(text: string | undefined): TurnOutcome {
+function parseFinalAnswer(text: string | undefined, schema: z.ZodType): TurnOutcome {
   if (text === undefined) return { kind: 'failed', error: 'Agenten afleverede ingen slutrapport.' };
   let json: unknown;
   try {
@@ -268,12 +275,12 @@ function parseFinalAnswer(text: string | undefined): TurnOutcome {
   } catch {
     return { kind: 'failed', error: `Agentens slutrapport er ikke JSON: ${text.slice(0, 200)}` };
   }
-  const report = AgentReport.safeParse(json);
-  if (!report.success) {
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) {
     return {
       kind: 'failed',
-      error: `Agentens slutrapport har forkert form: ${z.prettifyError(report.error)}`,
+      error: `Agentens slutrapport har forkert form: ${z.prettifyError(parsed.error)}`,
     };
   }
-  return { kind: 'completed', report: report.data };
+  return { kind: 'completed', output: parsed.data };
 }

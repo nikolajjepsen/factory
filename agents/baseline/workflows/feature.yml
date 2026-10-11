@@ -1,0 +1,9 @@
+description: En ny feature. Implementér, få CI grøn og få koden reviewet.
+stages:
+  - id: implement
+    agent: implementer
+    strategy: direct
+    gates:
+      - ci
+      - review: { agent: reviewer, rubric: rubrics/code.md, min_score: 7 }
+    on_fail: [retry_with_feedback x3, escalate: human]

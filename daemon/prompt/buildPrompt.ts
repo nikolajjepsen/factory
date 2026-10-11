@@ -19,6 +19,8 @@ export interface PromptParts {
   agentsMd?: string;
   /** Feedback from earlier attempts (failed gates, review comments), oldest first. */
   feedback?: string[];
+  /** What this step must do, when it differs from solving the whole issue (stages, phases). */
+  instructions?: string[];
 }
 
 const AgentFrontmatter = z.looseObject({ role: z.string().optional() });
@@ -78,9 +80,52 @@ export function buildPrompt(parts: PromptParts): string {
   ];
   if (parts.spec) sections.push(`# Spec (${parts.spec.path})\n\n${parts.spec.text.trim()}`);
   if (parts.agentsMd) sections.push(`# Project rules (AGENTS.md)\n\n${parts.agentsMd.trim()}`);
+  if (parts.instructions && parts.instructions.length > 0) {
+    sections.push(
+      `# Your task in this step\n\n${parts.instructions.map((i) => i.trim()).join('\n\n')}`,
+    );
+  }
   if (parts.feedback && parts.feedback.length > 0) {
     const items = parts.feedback.map((item, i) => `## Attempt ${String(i + 1)}\n\n${item.trim()}`);
     sections.push(`# Feedback from earlier attempts\n\n${items.join('\n\n')}`);
   }
   return sections.join('\n\n---\n\n');
+}
+
+const MAX_DIFF_CHARS = 60_000;
+
+export interface ReviewPromptParts {
+  /** The reviewer agent file's body. */
+  agent: string;
+  rubric: string;
+  issue: IssueInput;
+  spec?: { path: string; text: string };
+  agentsMd?: string;
+  subject: { kind: 'diff'; diff: string; summary?: string } | { kind: 'plan'; plan: string };
+}
+
+/** The prompt for a review gate: reviewer, rubric, issue context and the change itself. */
+export function buildReviewPrompt(parts: ReviewPromptParts): string {
+  const base = buildPrompt({
+    agent: parts.agent,
+    issue: parts.issue,
+    ...(parts.spec && { spec: parts.spec }),
+    ...(parts.agentsMd !== undefined && { agentsMd: parts.agentsMd }),
+  });
+  let subject: string;
+  if (parts.subject.kind === 'plan') {
+    subject = `# The plan under review (PLAN.md)\n\n${parts.subject.plan.trim()}`;
+  } else {
+    const { diff, summary } = parts.subject;
+    const shown =
+      diff.length > MAX_DIFF_CHARS
+        ? `${diff.slice(0, MAX_DIFF_CHARS)}\n… (diff afkortet; læs resten af filerne direkte)`
+        : diff;
+    subject = [
+      '# The change under review',
+      ...(summary ? [`The author's summary: ${summary}`] : []),
+      `\`\`\`diff\n${shown || '(ingen ændringer)'}\n\`\`\``,
+    ].join('\n\n');
+  }
+  return [base, `# Rubric\n\n${parts.rubric.trim()}`, subject].join('\n\n---\n\n');
 }
