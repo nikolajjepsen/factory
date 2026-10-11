@@ -2,21 +2,37 @@
 
 En lokal AI-fabrik: Nikolaj sætter mål og prioriteter i GitHub, og agenter (primært Codex) analyserer, specificerer, koder, tester, reviewer og dokumenterer.
 
-## Kom i gang (bootstrapping)
+## Kør fabrikken
 
-Fabrikken kan ikke bygge sig selv endnu, så de første milepæle bygges interaktivt:
+### Én gang
+
+1. Installér Node 22 eller nyere, slå pnpm til med `corepack enable`, og kør `pnpm install`.
+2. Installér `codex`, og log ind med dit ChatGPT-login: `codex login`.
+3. Log ind med `gh auth login`, og giv tokenet adgang til boards: `gh auth refresh -s project`.
+4. Installér OrbStack til kontrolrummet.
+5. Udfyld `factory.yml` (board, `owner_login`, `status_repo`) og `projects.yml` (projekterne). Hvert projekt skal være klonet på sin `path`.
+6. Giv GitHub-boardet de Status-kolonner, `factory.yml` nævner (`Ready`, `In progress`, `In review`, `Done`).
+
+### Start og stop
 
 ```bash
-cd ~/dev/ai-factory
-git init && gh repo create ai-factory --private --source . --push   # valgfrit, men anbefalet
-codex
+pnpm factory daemon              # i forgrunden; Ctrl-C stopper og gemmer et kørende trin som WIP
+pnpm factory install-service     # døgnet rundt som launchd-agent, også efter genstart af Mac'en
+tail -f ~/.ai-factory/logs/daemon.log
+pnpm factory uninstall-service   # stop launchd-agenten
+docker compose up -d dashboard   # kontrolrummet på https://dashboard.ai-factory.orb.local
 ```
 
-Første prompt til Codex (eller Claude Code):
+Kontrolrummet genstarter selv med OrbStack. Når daemonen er stoppet, viser det "Offline".
 
-> Læs AGENTS.md og BUILD_PLAN.md. Lav en plan for M0, og byg den, når jeg har godkendt.
+Pause, fokus, tænd/sluk pr. projekt og boost gemmes i `~/.ai-factory/state.db` og gælder også efter en genstart. Tjek dem i kontrolrummet eller med `/factory status`, når du starter fabrikken igen.
 
-Fortsæt milepæl for milepæl. Efter M3 kan fabrikken begynde at tage sine egne issues.
+### Giv den arbejde
+
+- Læg et issue i "Ready" på boardet. Det øverste kort tages først.
+- Labelet `idea` sender issuet gennem produktafdelingen: Decision Brief, spec og sub-issues. `bug` giver `bugfix`. Ellers bruges `feature`. Se `docs/workflows.md`.
+- Styr fabrikken med knapperne i kontrolrummet eller med `/factory`-kommentarer, fx `/factory status` på "Factory Status"-issuet. Se `docs/daemon.md`.
+- Fabrikken merger aldrig selv. PR'er med `factory:ready-to-merge` merger du.
 
 ## Udvikling
 
@@ -27,13 +43,10 @@ pnpm install
 pnpm check              # typecheck + lint + test, samme som CI
 pnpm factory --version  # kør CLI'en direkte fra kildekoden
 pnpm factory quota      # Codex-kvoten (kræver codex installeret og logget ind)
-pnpm factory run --project ekvilibrium --issue 1   # kør issuets workflow til en PR, der er klar til merge
+pnpm factory run --project ekvilibrium --issue 1   # kør ét issues workflow til en PR uden daemonen
 pnpm factory log --project ekvilibrium --issue 1   # forsøgsloggen: agent-turns og gates
-pnpm factory workflow validate                     # tjek workflow-filerne
-pnpm factory daemon                                # kør fabrikken i forgrunden
-pnpm factory install-service                       # kør den døgnet rundt som launchd-agent
+pnpm factory workflow validate                     # tjek workflows, agentfiler og project.yml
 pnpm factory api-token                             # tokenet til daemonens API på 127.0.0.1:4712
-docker compose up -d dashboard                     # kontrolrummet på https://dashboard.ai-factory.orb.local
 pnpm format             # ret formatering med Prettier
 ```
 
