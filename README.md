@@ -26,6 +26,7 @@ Kræver Node 22 eller nyere og pnpm (versionen står i `packageManager` i `packa
 pnpm install
 pnpm check              # typecheck + lint + test, samme som CI
 pnpm factory --version  # kør CLI'en direkte fra kildekoden
+pnpm factory quota      # Codex-kvoten (kræver codex installeret og logget ind)
 pnpm format             # ret formatering med Prettier
 ```
 
@@ -48,6 +49,7 @@ Fabrikken ændrer aldrig selv CI-konfiguration eller branch protection. En PR, d
 - `AGENTS.md` / `CLAUDE.md` – regler for agenterne
 - `docs/design.md` – designdokumentet
 - `docs/mockups/` – kontrolrummet
+- `docs/codex-app-server.md` – protokollen og klienten mod `codex app-server`
 - `CHANGELOG.md` – ændringer i adfærd
 - `daemon/` – kø, tilstandsmaskine, heartbeat, kvote og CLI'en (`daemon/cli/`)
 - `runners/` – motor-adaptere (Codex først)

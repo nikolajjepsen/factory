@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "commander": "^15.0.0",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
