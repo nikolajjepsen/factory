@@ -1,0 +1,4 @@
+# Fabrikken som sit eget projekt. Se docs/agents.md.
+
+# Det samme tjek, som CI kører.
+ci: pnpm check && pnpm factory workflow validate

@@ -4,3 +4,6 @@ projects:
   ekvilibrium:
     repo: nikolajjepsen/ekvilibrium
     path: ~/dev/ekvilibrium
+  factory:
+    repo: nikolajjepsen/factory
+    path: ~/dev/ai-factory
