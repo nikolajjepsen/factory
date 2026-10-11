@@ -10,6 +10,7 @@ const run = (overrides: Partial<RunState> = {}): RunState => ({
   status: 'active',
   branch: 'factory/12-x',
   stageIndex: 0,
+  stageId: 'implement',
   phase: 'code',
   attempt: 1,
   ladderIndex: 0,

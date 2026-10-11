@@ -30,6 +30,8 @@ pnpm factory quota      # Codex-kvoten (kræver codex installeret og logget ind)
 pnpm factory run --project ekvilibrium --issue 1   # kør issuets workflow til en PR, der er klar til merge
 pnpm factory log --project ekvilibrium --issue 1   # forsøgsloggen: agent-turns og gates
 pnpm factory workflow validate                     # tjek workflow-filerne
+pnpm factory daemon                                # kør fabrikken i forgrunden
+pnpm factory install-service                       # kør den døgnet rundt som launchd-agent
 pnpm format             # ret formatering med Prettier
 ```
 
@@ -55,6 +57,7 @@ Fabrikken ændrer aldrig selv CI-konfiguration eller branch protection. En PR, d
 - `docs/codex-app-server.md` – protokollen og klienten mod `codex app-server`
 - `docs/runner.md` – runner-kontrakten, og hvordan et issue bliver til en PR
 - `docs/workflows.md` – workflow-filer, ordforrådet og motoren
+- `docs/daemon.md` – daemonen: boardet, heartbeat, ChatOps, nødbremse og launchd
 - `projects.yml` – de projekter, fabrikken arbejder på (`repo` og lokal `path`)
 - `factory.yml` – fabrikkens konfiguration: board, ejer, status-repo, runner og grænser
 - `CHANGELOG.md` – ændringer i adfærd

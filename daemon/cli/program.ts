@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import pkg from '../../package.json' with { type: 'json' };
+import { type DaemonCommandDeps, registerDaemonCommands } from './commands/daemon.js';
 import { type LogCommandDeps, registerLogCommand } from './commands/log.js';
 import { type QuotaCommandDeps, registerQuotaCommand } from './commands/quota.js';
 import { registerRunCommand, type RunCommandDeps } from './commands/run.js';
@@ -14,6 +15,8 @@ export interface CliDeps
     Pick<RunCommandDeps, 'runIssue' | 'runWorkflow'>,
     Pick<WorkflowCommandDeps, 'validateWorkflows'>,
     Pick<LogCommandDeps, 'attempts'>,
+    Pick<DaemonCommandDeps, 'runDaemon' | 'installService' | 'uninstallService'>,
+    Partial<Pick<DaemonCommandDeps, 'onShutdown'>>,
     Partial<Pick<QuotaCommandDeps, 'now' | 'timeZone'>>,
     Partial<Pick<RunCommandDeps, 'onInterrupt' | 'forceExit' | 'setExitCode'>> {
   stdout?: (text: string) => void;
@@ -22,6 +25,15 @@ export interface CliDeps
 function onSigint(handler: () => void): () => void {
   process.on('SIGINT', handler);
   return () => process.off('SIGINT', handler);
+}
+
+function onSigintOrSigterm(handler: () => void): () => void {
+  process.on('SIGINT', handler);
+  process.on('SIGTERM', handler);
+  return () => {
+    process.off('SIGINT', handler);
+    process.off('SIGTERM', handler);
+  };
 }
 
 /**
@@ -58,6 +70,13 @@ export function createProgram(deps: CliDeps): Command {
     attempts: deps.attempts,
     stdout,
     ...(deps.timeZone && { timeZone: deps.timeZone }),
+  });
+  registerDaemonCommands(program, {
+    runDaemon: deps.runDaemon,
+    installService: deps.installService,
+    uninstallService: deps.uninstallService,
+    onShutdown: deps.onShutdown ?? onSigintOrSigterm,
+    stdout,
   });
   return program;
 }

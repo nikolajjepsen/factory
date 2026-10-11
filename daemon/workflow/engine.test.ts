@@ -104,7 +104,7 @@ describe('WorkflowEngine: baseline feature workflow', () => {
     expect(run.pr).toEqual({ number: 5, url: 'https://github.com/o/demo/pull/5' });
     expect(h.workspace.pushed).toBe(1);
     expect(h.github.labelsOf(5)).toEqual([LABELS.readyToMerge]);
-    expect(h.github.comments.at(-1)?.body).toMatch(/^✅ \*\*Klar til merge\.\*\*/);
+    expect(h.github.comments.at(-1)?.body).toMatch(/^\*\*Klar til merge\.\*\*/);
     expect(h.runner.writeTasks.map((t) => t.role)).toEqual(['implementer']);
     expect(h.runner.reviewTasks.map((t) => t.role)).toEqual(['reviewer']);
   });

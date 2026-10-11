@@ -130,6 +130,7 @@ export class WorkflowEngine {
       status: 'active',
       branch: branchName(issue.number, issue.title),
       stageIndex: 0,
+      stageId: first.id,
       phase: firstPhase(first.strategy),
       attempt: 1,
       ladderIndex: 0,
@@ -168,7 +169,6 @@ export class WorkflowEngine {
     const stage = workflow.stages[run.stageIndex];
     if (!stage) return this.#finish(run, project);
 
-    const issue = await this.deps.github.getIssue(project.repo, run.issue);
     const rejection = this.deps.store.takeDecision(run.project, run.issue, 'reject');
     if (rejection) {
       await this.#leaveWaiting(run, project);
@@ -182,6 +182,28 @@ export class WorkflowEngine {
       );
     }
 
+    // A run parked on a human gate is checked often; ask only that gate until it moves.
+    const parkedGate = stage.gates.filter((gate) => gate.on === run.phase)[run.gateIndex];
+    if (run.status === 'waiting' && parkedGate?.kind === 'human') {
+      const decision = await evaluateHuman(
+        { github: this.deps.github, store: this.deps.store, ownerLogin: this.deps.ownerLogin },
+        parkedGate,
+        project.repo,
+        run,
+      );
+      if (decision.kind === 'pending') return run;
+      // Put a taken approval back, so the full pass below sees it.
+      if (decision.kind === 'pass') {
+        this.deps.store.addDecision({
+          project: run.project,
+          issue: run.issue,
+          kind: 'approve',
+          feedback: null,
+        });
+      }
+    }
+
+    const issue = await this.deps.github.getIssue(project.repo, run.issue);
     const workspace = await this.deps.worktrees.prepare({
       project: project.name,
       issue: run.issue,
@@ -254,6 +276,7 @@ export class WorkflowEngine {
     if (!nextStage) return this.#finish(run, project);
     Object.assign(run, {
       stageIndex: run.stageIndex + 1,
+      stageId: nextStage.id,
       phase: firstPhase(nextStage.strategy),
       attempt: 1,
       ladderIndex: 0,
@@ -485,7 +508,7 @@ export class WorkflowEngine {
       project.repo,
       run.issue,
       [
-        `🛑 **Fabrikken er gået i stå på dette issue.** ${reason}`,
+        `**Fabrikken er gået i stå på dette issue.** ${reason}`,
         ...(recent ? ['', 'Seneste feedback:', '', recent] : []),
         '',
         `Prøv igen med \`/factory retry #${String(run.issue)}\`, eller giv feedback med \`/factory reject #${String(run.issue)} "…"\`.`,
@@ -504,7 +527,7 @@ export class WorkflowEngine {
     await github.createComment(
       project.repo,
       target,
-      `✅ **Klar til merge.** Alle stages i workflowet "${run.workflow}" er godkendt.${run.lastSummary ? `\n\n${run.lastSummary}` : ''}`,
+      `**Klar til merge.** Alle stages i workflowet "${run.workflow}" er godkendt.${run.lastSummary ? `\n\n${run.lastSummary}` : ''}`,
     );
     this.#status(run, `Færdig. ${run.pr ? `Klar til merge: ${run.pr.url}` : 'Ingen PR.'}`);
     return run;
@@ -521,7 +544,7 @@ export class WorkflowEngine {
         ? `Godkend ${run.pr.url} med et review, eller afvis med \`/factory reject #${n} "…"\`.`
         : `Svar med \`/factory approve #${n}\` eller \`/factory reject #${n} "…"\`.`;
     await this.deps.github.addLabels(project.repo, run.issue, [LABELS.needsYou]);
-    await this.deps.github.createComment(project.repo, run.issue, `🙋 **Venter på dig.** ${how}`);
+    await this.deps.github.createComment(project.repo, run.issue, `**Venter på dig.** ${how}`);
     this.#status(run, 'Venter på dig.');
     return run;
   }

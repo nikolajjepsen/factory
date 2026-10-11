@@ -5,7 +5,13 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { loadFactoryConfig } from '../config/factoryConfig.js';
 import { factoryHome, factoryRoot, loadProject, loadProjects } from '../config/projects.js';
-import { OctokitGitHub } from '../github/github.js';
+import { GraphQLBoard } from '../github/board.js';
+import { OctokitGitHub, octokitFromGhCli } from '../github/github.js';
+import { Daemon } from '../loop/daemon.js';
+import {
+  installService as installLaunchd,
+  uninstallService as uninstallLaunchd,
+} from '../loop/launchd.js';
 import { runIssue } from '../run/runIssue.js';
 import type { Runner } from '../runner/runner.js';
 import { SqliteStore } from '../store/store.js';
@@ -79,6 +85,32 @@ export async function runSingleRole(
   });
 }
 
+type FactoryConfigValue = Awaited<ReturnType<typeof loadFactoryConfig>>;
+type EngineDepsSubset = Pick<
+  ConstructorParameters<typeof WorkflowEngine>[0],
+  'github' | 'store' | 'runners' | 'onEvent'
+>;
+
+function engineFor(deps: EngineDepsSubset, config: FactoryConfigValue): WorkflowEngine {
+  return new WorkflowEngine({
+    ...deps,
+    defaultRunner: config.default_runner,
+    worktrees: worktrees(),
+    project: (name) => loadProject(projectsFile, name),
+    library: (project) => libraryFor(project.path),
+    ownerLogin: config.owner_login,
+    ci: {
+      pollMs: 15_000,
+      timeoutMs: config.limits.ci_timeout_minutes * 60_000,
+      noChecksGraceMs: 3 * 60_000,
+      now: () => new Date(),
+      sleep: (ms, abort) => delay(ms, undefined, abort ? { signal: abort } : {}),
+    },
+    now: () => new Date(),
+    newId: randomUUID,
+  });
+}
+
 export async function runWorkflow(
   options: RunCommandOptions,
   onEvent: (event: EngineEvent) => void,
@@ -89,26 +121,7 @@ export async function runWorkflow(
   const store = openStore();
   try {
     return await withRunners(options, async (runners) => {
-      const engine = new WorkflowEngine({
-        github,
-        store,
-        runners,
-        defaultRunner: config.default_runner,
-        worktrees: worktrees(),
-        project: (name) => loadProject(projectsFile, name),
-        library: (project) => libraryFor(project.path),
-        ownerLogin: config.owner_login,
-        ci: {
-          pollMs: 15_000,
-          timeoutMs: config.limits.ci_timeout_minutes * 60_000,
-          noChecksGraceMs: 3 * 60_000,
-          now: () => new Date(),
-          sleep: (ms, abort) => delay(ms, undefined, abort ? { signal: abort } : {}),
-        },
-        now: () => new Date(),
-        newId: randomUUID,
-        onEvent,
-      });
+      const engine = engineFor({ github, store, runners, onEvent }, config);
       const run = await engine.start(
         options.project,
         options.issue,
@@ -120,6 +133,57 @@ export async function runWorkflow(
     store.close();
   }
 }
+
+export async function runDaemon(options: { once: boolean }, signal: AbortSignal): Promise<void> {
+  const config = await loadFactoryConfig(factoryConfigFile);
+  const octokit = await octokitFromGhCli();
+  const github = new OctokitGitHub(octokit);
+  const store = openStore();
+  try {
+    await withRunners({}, async (runners) => {
+      // The engine reports to the daemon, which is built after it.
+      const sink: { daemon?: Daemon } = {};
+      const engine = engineFor(
+        { github, store, runners, onEvent: (event) => sink.daemon?.handleEngineEvent(event) },
+        config,
+      );
+      const daemon = new Daemon({
+        config,
+        github,
+        board: new GraphQLBoard(octokit, config.board.owner, config.board.number),
+        store,
+        engine,
+        projects: () => loadProjects(projectsFile),
+        library: (project) => libraryFor(project.path),
+        knownRunners: [...runners.keys()],
+        haltFile: join(factoryHome(), 'HALT'),
+        now: () => new Date(),
+        sleep: (ms, abort) => delay(ms, undefined, abort ? { signal: abort } : {}),
+        log: (line) => process.stdout.write(`${line}\n`),
+      });
+      sink.daemon = daemon;
+      if (options.once) {
+        await daemon.tick();
+        await daemon.heartbeat();
+      } else {
+        await daemon.run(signal);
+      }
+    });
+  } finally {
+    store.close();
+  }
+}
+
+export function installService(): Promise<string> {
+  return installLaunchd({
+    node: process.execPath,
+    factoryRoot,
+    factoryHome: factoryHome(),
+    path: process.env.PATH ?? '/usr/bin:/bin',
+  });
+}
+
+export const uninstallService = uninstallLaunchd;
 
 export async function validateWorkflows(): Promise<WorkflowValidation> {
   const result: WorkflowValidation = { checked: [], problems: [], skipped: [] };

@@ -4,6 +4,7 @@ import type {
   CreatePullRequest,
   GitHub,
   Issue,
+  IssueComment,
   PullRequest,
   Review,
 } from '../../daemon/github/github.js';
@@ -21,6 +22,14 @@ export class FakeGitHub implements GitHub {
   statuses: CommitStatus[] = [];
   jobLogs = new Map<number, string>();
   reviews: Review[] = [];
+  /** Comments per repo, returned by listCommentsSince when created at or after `since`. */
+  repoComments = new Map<string, IssueComment[]>();
+  reactions: { repo: string; commentId: number }[] = [];
+  /** `owner/repo:label` pairs that have an open issue. */
+  openLabels = new Set<string>();
+  issueBodies = new Map<number, string>();
+  createdIssues: { repo: string; title: string; body: string; number: number }[] = [];
+  pinned: number[] = [];
 
   constructor(issue?: Partial<Issue>) {
     this.setIssue({
@@ -96,6 +105,36 @@ export class FakeGitHub implements GitHub {
   }
   listReviews() {
     return Promise.resolve(this.reviews);
+  }
+  listCommentsSince(repo: string, since: string) {
+    return Promise.resolve((this.repoComments.get(repo) ?? []).filter((c) => c.createdAt >= since));
+  }
+  reactToComment(repo: string, commentId: number) {
+    this.reactions.push({ repo, commentId });
+    return Promise.resolve();
+  }
+  hasOpenIssueWithLabel(repo: string, label: string) {
+    return Promise.resolve(this.openLabels.has(`${repo}:${label}`));
+  }
+  findOpenIssueByTitle(repo: string, title: string) {
+    const found = this.createdIssues.find((i) => i.repo === repo && i.title === title);
+    return Promise.resolve(
+      found ? { number: found.number, body: this.issueBodies.get(found.number) ?? '' } : undefined,
+    );
+  }
+  createIssue(repo: string, title: string, body: string) {
+    const number = 100 + this.createdIssues.length;
+    this.createdIssues.push({ repo, title, body, number });
+    this.issueBodies.set(number, body);
+    return Promise.resolve(number);
+  }
+  updateIssueBody(_repo: string, issue: number, body: string) {
+    this.issueBodies.set(issue, body);
+    return Promise.resolve();
+  }
+  pinIssue(_repo: string, issue: number) {
+    this.pinned.push(issue);
+    return Promise.resolve();
   }
 }
 

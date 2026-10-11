@@ -19,6 +19,8 @@ export interface RunState {
   /** Fixed when the run starts, so renaming the issue does not move the work. */
   branch: string;
   stageIndex: number;
+  /** The id of the current stage, for status displays. */
+  stageId: string;
   phase: Phase;
   /** 1-based attempt number within the current stage. */
   attempt: number;

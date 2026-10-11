@@ -54,6 +54,10 @@ async function run(args: string[], deps: Partial<CliDeps> = {}) {
     runWorkflow: () => Promise.reject(new Error('runWorkflow not expected in this test')),
     validateWorkflows: () => Promise.resolve({ checked: [], problems: [], skipped: [] }),
     attempts: () => Promise.resolve([]),
+    runDaemon: () => Promise.resolve(),
+    installService: () => Promise.resolve('/Library/LaunchAgents/x.plist'),
+    uninstallService: () => Promise.resolve(),
+    onShutdown: () => () => undefined,
     now: () => new Date('2026-10-11T16:21:33.000Z'),
     timeZone: 'Europe/Copenhagen',
     stdout: (text) => (stdout += text),
@@ -295,6 +299,7 @@ describe('factory run (workflow)', () => {
     status: 'done',
     branch: 'factory/12-x',
     stageIndex: 0,
+    stageId: 'implement',
     phase: 'code',
     attempt: 2,
     ladderIndex: 0,
@@ -437,6 +442,43 @@ describe('factory log', () => {
   it('says so when nothing is logged', async () => {
     expect((await run(['log', '--project', 'demo', '--issue', '12'])).stdout).toBe(
       'Ingen forsøg logget for dette issue.\n',
+    );
+  });
+});
+
+describe('factory daemon and services', () => {
+  it('runs the daemon until shutdown and passes --once on', async () => {
+    const calls: boolean[] = [];
+    let shutdown: (() => void) | undefined;
+    const out = await run(['daemon'], {
+      onShutdown: (handler) => {
+        shutdown = handler;
+        return () => {
+          shutdown = undefined;
+        };
+      },
+      runDaemon: (options, signal) => {
+        calls.push(options.once);
+        shutdown?.();
+        expect(signal.aborted).toBe(true);
+        return Promise.resolve();
+      },
+    });
+    expect(calls).toEqual([false]);
+    expect(out.stdout).toContain('Stopper daemonen');
+    expect(shutdown).toBeUndefined();
+    await run(['daemon', '--once'], {
+      runDaemon: (options) => (calls.push(options.once), Promise.resolve()),
+    });
+    expect(calls).toEqual([false, true]);
+  });
+
+  it('installs and uninstalls the launchd agent', async () => {
+    expect((await run(['install-service'])).stdout).toBe(
+      'Installeret og startet: /Library/LaunchAgents/x.plist\nLog: ~/.ai-factory/logs/daemon.log\n',
+    );
+    expect((await run(['uninstall-service'])).stdout).toBe(
+      'launchd-agenten er stoppet og fjernet.\n',
     );
   });
 });

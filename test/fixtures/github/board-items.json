@@ -1,0 +1,146 @@
+{
+  "data": {
+    "user": {
+      "projectV2": {
+        "id": "PVT_kwHOAIRcqc4Bmlox",
+        "field": {
+          "id": "PVTSSF_lAHOAIRcqc4BmloxzhlOBpM",
+          "options": [
+            {
+              "id": "f75ad846",
+              "name": "Backlog"
+            },
+            {
+              "id": "61e4505c",
+              "name": "Ready"
+            },
+            {
+              "id": "47fc9ee4",
+              "name": "In progress"
+            },
+            {
+              "id": "df73e18b",
+              "name": "In review"
+            },
+            {
+              "id": "98236657",
+              "name": "Done"
+            }
+          ]
+        },
+        "items": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpKrMDAwMDAwMDAuMjXOEAGwqQ=="
+          },
+          "nodes": [
+            {
+              "id": "PVTI_lAHOAIRcqc4BmloxzhABhx4",
+              "fieldValueByName": {
+                "name": "In progress",
+                "optionId": "47fc9ee4"
+              },
+              "content": {
+                "__typename": "Issue",
+                "number": 1,
+                "title": "Tilf\u00f8j clamp(value, min, max)",
+                "state": "OPEN",
+                "url": "https://github.com/nikolajjepsen/ekvilibrium/issues/1",
+                "repository": {
+                  "nameWithOwner": "nikolajjepsen/ekvilibrium"
+                },
+                "labels": {
+                  "nodes": []
+                },
+                "subIssues": {
+                  "nodes": []
+                },
+                "blockedBy": {
+                  "nodes": []
+                }
+              }
+            },
+            {
+              "id": "PVTI_lAHOAIRcqc4BmloxzhABhx8",
+              "fieldValueByName": {
+                "name": "In progress",
+                "optionId": "47fc9ee4"
+              },
+              "content": {
+                "__typename": "Issue",
+                "number": 2,
+                "title": "Tilf\u00f8j mean(numbers)",
+                "state": "OPEN",
+                "url": "https://github.com/nikolajjepsen/ekvilibrium/issues/2",
+                "repository": {
+                  "nameWithOwner": "nikolajjepsen/ekvilibrium"
+                },
+                "labels": {
+                  "nodes": []
+                },
+                "subIssues": {
+                  "nodes": []
+                },
+                "blockedBy": {
+                  "nodes": []
+                }
+              }
+            },
+            {
+              "id": "PVTI_lAHOAIRcqc4BmloxzhABhyA",
+              "fieldValueByName": {
+                "name": "Backlog",
+                "optionId": "f75ad846"
+              },
+              "content": {
+                "__typename": "Issue",
+                "number": 5,
+                "title": "Tilf\u00f8j median(numbers)",
+                "state": "OPEN",
+                "url": "https://github.com/nikolajjepsen/ekvilibrium/issues/5",
+                "repository": {
+                  "nameWithOwner": "nikolajjepsen/ekvilibrium"
+                },
+                "labels": {
+                  "nodes": []
+                },
+                "subIssues": {
+                  "nodes": []
+                },
+                "blockedBy": {
+                  "nodes": []
+                }
+              }
+            },
+            {
+              "id": "PVTI_lAHOAIRcqc4BmloxzhABsKk",
+              "fieldValueByName": {
+                "name": "In progress",
+                "optionId": "47fc9ee4"
+              },
+              "content": {
+                "__typename": "Issue",
+                "number": 6,
+                "title": "Tilf\u00f8j sum(numbers)",
+                "state": "OPEN",
+                "url": "https://github.com/nikolajjepsen/ekvilibrium/issues/6",
+                "repository": {
+                  "nameWithOwner": "nikolajjepsen/ekvilibrium"
+                },
+                "labels": {
+                  "nodes": []
+                },
+                "subIssues": {
+                  "nodes": []
+                },
+                "blockedBy": {
+                  "nodes": []
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

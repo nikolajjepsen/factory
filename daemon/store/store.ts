@@ -47,6 +47,13 @@ export interface Store {
   takeDecision(project: string, issue: number, kind: Decision['kind']): Decision | undefined;
   setWorkflowOverride(project: string, issue: number, workflow: string): void;
   getWorkflowOverride(project: string, issue: number): string | undefined;
+  /** The newest run for an issue, whatever its status. */
+  findLatestRun(project: string, issue: number): RunState | undefined;
+  /** Small daemon settings that must survive restarts: pause, focus, last comment poll. */
+  getSetting(key: string): string | undefined;
+  setSetting(key: string, value: string | undefined): void;
+  /** Records a ChatOps comment as handled. Returns false if it was handled before. */
+  markCommentHandled(repo: string, commentId: number): boolean;
   close(): void;
 }
 
@@ -90,6 +97,13 @@ CREATE TABLE IF NOT EXISTS decisions (
   feedback TEXT,
   created_at TEXT NOT NULL,
   used_at TEXT
+);
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS handled_comments (
+  repo TEXT NOT NULL,
+  comment_id INTEGER NOT NULL,
+  handled_at TEXT NOT NULL,
+  PRIMARY KEY (repo, comment_id)
 );
 CREATE TABLE IF NOT EXISTS workflow_overrides (
   project TEXT NOT NULL,
@@ -256,6 +270,40 @@ export class SqliteStore implements Store {
       .prepare('SELECT workflow FROM workflow_overrides WHERE project = ? AND issue = ?')
       .get(project, issue) as { workflow: string } | undefined;
     return row?.workflow;
+  }
+
+  findLatestRun(project: string, issue: number): RunState | undefined {
+    const row = this.#db
+      .prepare(
+        'SELECT state FROM runs WHERE project = ? AND issue = ? ORDER BY created_at DESC LIMIT 1',
+      )
+      .get(project, issue) as { state: string } | undefined;
+    return row ? (JSON.parse(row.state) as RunState) : undefined;
+  }
+
+  getSetting(key: string): string | undefined {
+    const row = this.#db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+      { value: string } | undefined;
+    return row?.value;
+  }
+
+  setSetting(key: string, value: string | undefined): void {
+    if (value === undefined) this.#db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+    else
+      this.#db
+        .prepare(
+          'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
+        )
+        .run(key, value);
+  }
+
+  markCommentHandled(repo: string, commentId: number): boolean {
+    const result = this.#db
+      .prepare(
+        'INSERT OR IGNORE INTO handled_comments (repo, comment_id, handled_at) VALUES (?, ?, ?)',
+      )
+      .run(repo, commentId, this.#timestamp());
+    return result.changes > 0;
   }
 
   close(): void {

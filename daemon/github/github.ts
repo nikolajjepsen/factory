@@ -59,6 +59,31 @@ export const Review = z.object({
 });
 export type Review = z.infer<typeof Review>;
 
+/**
+ * Added to every comment the factory writes. It comments with the owner's own `gh` login, so
+ * without this marker ChatOps could not tell its comments from the owner's and might run the
+ * `/factory …` examples it writes itself.
+ */
+export const FACTORY_COMMENT_MARKER = '<!-- ai-factory -->';
+
+export interface IssueComment {
+  id: number;
+  issueNumber: number;
+  author: string;
+  body: string;
+  createdAt: string;
+  url: string;
+}
+
+const RawComment = z.object({
+  id: z.number(),
+  issue_url: z.string(),
+  user: z.object({ login: z.string() }).nullable(),
+  body: z.string().optional().default(''),
+  created_at: z.string(),
+  html_url: z.string(),
+});
+
 export interface CreatePullRequest {
   head: string;
   base: string;
@@ -82,6 +107,18 @@ export interface GitHub {
   /** The plain-text log of a GitHub Actions job (its check run id). */
   getJobLog(repo: string, jobId: number): Promise<string>;
   listReviews(repo: string, pr: number): Promise<Review[]>;
+  /** Issue and PR comments in the repo created or updated since `since` (ISO), oldest first. */
+  listCommentsSince(repo: string, since: string): Promise<IssueComment[]>;
+  /** Acknowledges a comment with a +1 reaction. */
+  reactToComment(repo: string, commentId: number): Promise<void>;
+  hasOpenIssueWithLabel(repo: string, label: string): Promise<boolean>;
+  findOpenIssueByTitle(
+    repo: string,
+    title: string,
+  ): Promise<{ number: number; body: string } | undefined>;
+  createIssue(repo: string, title: string, body: string): Promise<number>;
+  updateIssueBody(repo: string, issue: number, body: string): Promise<void>;
+  pinIssue(repo: string, issue: number): Promise<void>;
 }
 
 function splitRepo(repo: string): { owner: string; repo: string } {
@@ -102,24 +139,27 @@ export async function ghAuthToken(): Promise<string> {
   }
 }
 
+/** An Octokit client on the `gh` login. Shared by the REST client and the board. */
+export async function octokitFromGhCli(): Promise<Octokit> {
+  return new Octokit({
+    auth: await ghAuthToken(),
+    userAgent: 'ai-factory',
+    // Failed requests are thrown to the caller; Octokit's own error log only adds noise,
+    // for example for the expected 404 when removing a label the issue does not have.
+    log: {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: console.warn,
+      error: () => undefined,
+    },
+  });
+}
+
 export class OctokitGitHub implements GitHub {
   constructor(private readonly octokit: Octokit) {}
 
   static async fromGhCli(): Promise<OctokitGitHub> {
-    return new OctokitGitHub(
-      new Octokit({
-        auth: await ghAuthToken(),
-        userAgent: 'ai-factory',
-        // Failed requests are thrown to the caller; Octokit's own error log only adds noise,
-        // for example for the expected 404 when removing a label the issue does not have.
-        log: {
-          debug: () => undefined,
-          info: () => undefined,
-          warn: console.warn,
-          error: () => undefined,
-        },
-      }),
-    );
+    return new OctokitGitHub(await octokitFromGhCli());
   }
 
   async getIssue(repo: string, number: number): Promise<Issue> {
@@ -168,7 +208,11 @@ export class OctokitGitHub implements GitHub {
   }
 
   async createComment(repo: string, issue: number, body: string): Promise<void> {
-    await this.octokit.rest.issues.createComment({ ...splitRepo(repo), issue_number: issue, body });
+    await this.octokit.rest.issues.createComment({
+      ...splitRepo(repo),
+      issue_number: issue,
+      body: `${body}\n\n${FACTORY_COMMENT_MARKER}`,
+    });
   }
 
   async listCheckRuns(repo: string, sha: string): Promise<CheckRun[]> {
@@ -197,6 +241,78 @@ export class OctokitGitHub implements GitHub {
     if (typeof data === 'string') return data;
     if (data instanceof ArrayBuffer) return Buffer.from(data).toString('utf8');
     return String(data);
+  }
+
+  async listCommentsSince(repo: string, since: string): Promise<IssueComment[]> {
+    const data = await this.octokit.paginate(this.octokit.rest.issues.listCommentsForRepo, {
+      ...splitRepo(repo),
+      since,
+      sort: 'created',
+      direction: 'asc',
+      per_page: 100,
+    });
+    return z
+      .array(RawComment)
+      .parse(data)
+      .map((c) => ({
+        id: c.id,
+        issueNumber: Number(c.issue_url.split('/').pop()),
+        author: c.user?.login ?? '',
+        body: c.body,
+        createdAt: c.created_at,
+        url: c.html_url,
+      }));
+  }
+
+  async reactToComment(repo: string, commentId: number): Promise<void> {
+    await this.octokit.rest.reactions.createForIssueComment({
+      ...splitRepo(repo),
+      comment_id: commentId,
+      content: '+1',
+    });
+  }
+
+  async hasOpenIssueWithLabel(repo: string, label: string): Promise<boolean> {
+    const { data } = await this.octokit.rest.issues.listForRepo({
+      ...splitRepo(repo),
+      labels: label,
+      state: 'open',
+      per_page: 1,
+    });
+    return data.length > 0;
+  }
+
+  async findOpenIssueByTitle(
+    repo: string,
+    title: string,
+  ): Promise<{ number: number; body: string } | undefined> {
+    const data = await this.octokit.paginate(this.octokit.rest.issues.listForRepo, {
+      ...splitRepo(repo),
+      state: 'open',
+      per_page: 100,
+    });
+    const found = data.find((issue) => issue.title === title && !issue.pull_request);
+    return found ? { number: found.number, body: found.body ?? '' } : undefined;
+  }
+
+  async createIssue(repo: string, title: string, body: string): Promise<number> {
+    const { data } = await this.octokit.rest.issues.create({ ...splitRepo(repo), title, body });
+    return data.number;
+  }
+
+  async updateIssueBody(repo: string, issue: number, body: string): Promise<void> {
+    await this.octokit.rest.issues.update({ ...splitRepo(repo), issue_number: issue, body });
+  }
+
+  async pinIssue(repo: string, issue: number): Promise<void> {
+    const { data } = await this.octokit.rest.issues.get({
+      ...splitRepo(repo),
+      issue_number: issue,
+    });
+    await this.octokit.graphql(
+      'mutation($id: ID!) { pinIssue(input: { issueId: $id }) { clientMutationId } }',
+      { id: data.node_id },
+    );
   }
 
   async listReviews(repo: string, pr: number): Promise<Review[]> {
