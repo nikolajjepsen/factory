@@ -302,9 +302,11 @@ describe('Daemon: ChatOps', () => {
   });
 
   it('stops a running step on /factory stop and keeps the WIP', async () => {
-    const h = await harness({ runner: (inner) => new GatedRunner(inner) });
+    const gated: { runner?: GatedRunner } = {};
+    const h = await harness({ runner: (inner) => (gated.runner = new GatedRunner(inner)) });
     const running = h.daemon.tick();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Wait until the agent turn really runs, so the command interrupts it.
+    await gated.runner?.started;
     h.comment('/factory stop #12');
     await h.daemon.pollCommands();
     await running;
@@ -360,9 +362,11 @@ describe('Daemon: emergency brake', () => {
   });
 
   it('/factory halt writes the HALT file and interrupts the running step', async () => {
-    const h = await harness({ runner: (inner) => new GatedRunner(inner) });
+    const gated: { runner?: GatedRunner } = {};
+    const h = await harness({ runner: (inner) => (gated.runner = new GatedRunner(inner)) });
     const running = h.daemon.tick();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Wait until the agent turn really runs, so the command interrupts it.
+    await gated.runner?.started;
     h.comment('/factory halt');
     await h.daemon.pollCommands();
     await running;
