@@ -82,6 +82,8 @@ Kun kommentarer fra `owner_login` udføres. De læses fra statusissuets repo og 
 /factory stop #N            afbryd, gem arbejdet som WIP-commit
 /factory retry #N [--runner x]   prøv igen fra bunden af stigen
 /factory hold #N            spring over (label factory:hold)
+/factory release #N         frigiv et kort på hold
+/factory up #N              ryk kortet én plads op i Ready på boardet
 /factory focus <projekt>|off
 /factory workflow #N <navn> brug et andet workflow fra næste start
 /factory reject #N "…"      fejlet gate med teksten som feedback
@@ -102,7 +104,7 @@ Fabrikken stopper, mens et af disse gælder:
 - filen `~/.ai-factory/HALT` findes (`/factory halt` opretter den),
 - et åbent issue i et projektrepo har labelet `factory:halt`.
 
-Nødbremsen afbryder også et kørende trin med en WIP-commit. Fjern filen eller labelet, og skriv `/factory resume`.
+Nødbremsen afbryder også et kørende trin med en WIP-commit. `/factory resume` (eller Genoptag i kontrolrummet) sletter HALT-filen. Et `factory:halt`-label fjerner du selv på issuet.
 
 ## launchd
 

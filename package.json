@@ -11,7 +11,7 @@
   "packageManager": "pnpm@11.5.0",
   "scripts": {
     "factory": "tsx daemon/cli/main.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p dashboard",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run",

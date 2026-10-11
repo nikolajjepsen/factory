@@ -3,8 +3,9 @@ import {
   Command,
   type CommandResult,
   EVENT,
+  diffState,
   type FactoryState,
-  type StateEvent,
+  withoutLog,
 } from '@ai-factory/protocol';
 import { Hono } from 'hono';
 import { bearerAuth } from 'hono/bearer-auth';
@@ -55,10 +56,10 @@ export function createApi(options: ApiOptions): Hono {
 
   app.get('/events', (c) =>
     streamSSE(c, async (stream) => {
-      const { log, ...initial } = daemon.state();
-      let sent: Record<string, string> = snapshotOf(initial);
-      await stream.writeSSE({ event: EVENT.state, data: JSON.stringify(initial) });
-      await stream.writeSSE({ event: EVENT.log, data: JSON.stringify({ lines: log }) });
+      const state = daemon.state();
+      let sent = withoutLog(state);
+      await stream.writeSSE({ event: EVENT.state, data: JSON.stringify(sent) });
+      await stream.writeSSE({ event: EVENT.log, data: JSON.stringify({ lines: state.log }) });
 
       // Writes are chained, so events keep their order.
       let queue = Promise.resolve();
@@ -71,12 +72,8 @@ export function createApi(options: ApiOptions): Hono {
       const flush = () => {
         timer = undefined;
         const current = withoutLog(daemon.state());
-        const now = snapshotOf(current);
-        const changed: StateEvent = {};
-        for (const key of Object.keys(now) as (keyof StateEvent)[]) {
-          if (now[key] !== sent[key]) Object.assign(changed, { [key]: current[key] });
-        }
-        sent = now;
+        const changed = diffState(sent, current);
+        sent = current;
         if (Object.keys(changed).length > 0) send(EVENT.state, changed);
       };
       const offChange = daemon.onChange(() => {
@@ -103,18 +100,6 @@ export function createApi(options: ApiOptions): Hono {
     }),
   );
   return app;
-}
-
-/** The state as a `state` event carries it: the log goes out as `log` events. */
-function withoutLog(state: FactoryState): Omit<FactoryState, 'log'> {
-  const copy: Partial<FactoryState> = { ...state };
-  delete copy.log;
-  return copy as Omit<FactoryState, 'log'>;
-}
-
-/** Each top-level field as JSON, to compare cheaply. */
-function snapshotOf(state: Record<string, unknown>): Record<string, string> {
-  return Object.fromEntries(Object.entries(state).map(([k, v]) => [k, JSON.stringify(v)]));
 }
 
 /** Serves the API on 127.0.0.1 only. Resolves once listening; call `close` to stop. */

@@ -8,7 +8,11 @@ import { FactoryState } from './state.js';
 export const StateEvent = FactoryState.omit({ log: true }).partial();
 export type StateEvent = z.infer<typeof StateEvent>;
 
-export const LogEvent = z.object({ lines: z.array(z.string()) });
+export const LogEvent = z.object({
+  lines: z.array(z.string()),
+  /** The lines replace the client's log instead of being appended (sent on (re)connect). */
+  reset: z.boolean().optional(),
+});
 export type LogEvent = z.infer<typeof LogEvent>;
 
 export const EVENT = { state: 'state', log: 'log' } as const;

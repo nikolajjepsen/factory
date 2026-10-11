@@ -33,6 +33,7 @@ export function pickNext(
       issue: item.number,
       title: item.title,
       url: item.url,
+      held: item.labels.includes(HOLD_LABEL),
     };
     const skip = !item.open
       ? 'lukket'

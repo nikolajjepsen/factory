@@ -57,4 +57,4 @@ curl -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
   -d '{"command":"pause"}' http://127.0.0.1:4712/commands
 ```
 
-Binding til Docker-broen, så dashboard-containeren kan nå API'et, kommer i M5b.
+Kontrolrummets container når API'et via `host.orb.internal`, fordi OrbStack sender det videre til værtens `127.0.0.1` (se `dashboard/README.md`). API'et binder derfor aldrig til Docker-netværket.

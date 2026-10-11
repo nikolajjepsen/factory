@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import type { FactoryConfig } from '../config/factoryConfig.js';
 import type { Project } from '../config/projects.js';
 import type { CommandResult, QuotaSnapshot, TodayStats } from '@ai-factory/protocol';
@@ -22,9 +22,11 @@ import type { Store } from '../store/store.js';
 import { type EngineEvent, LABELS, type WorkflowEngine } from '../workflow/engine.js';
 import type { AgentLibrary } from '../workflow/load.js';
 import type { RunState } from '../workflow/runState.js';
+import type { Workflow } from '../workflow/schema.js';
+import { stepsFor } from '../workflow/steps.js';
 import { HOLD_LABEL, pickNext } from './picker.js';
 import { prKey, prsOpenedToday, todayStats } from './today.js';
-import type { DaemonMode, FactoryState, QueueEntry, WaitingEntry } from './state.js';
+import type { CurrentWork, DaemonMode, FactoryState, QueueEntry, WaitingEntry } from './state.js';
 import { StatusIssue } from './statusIssue.js';
 
 export const HALT_LABEL = 'factory:halt';
@@ -90,6 +92,9 @@ export class Daemon {
   #repos = new Map<string, string>();
   readonly #log: string[] = [];
   #polling = false;
+  #halted = false;
+  /** The workflow of the run in `#current`, for its progress steps. */
+  #currentWorkflow: Workflow | undefined;
   /** Aborted by a command, so a sleeping loop reacts at once. */
   #wake = new AbortController();
   #heartbeatAt: string | undefined;
@@ -160,6 +165,9 @@ export class Daemon {
       quotaOverrideUntil: this.#boostUntil(),
       today: this.#today,
       focus: this.#focus,
+      projects: [...this.#repos].map(([name, repo]) => ({ name, repo })),
+      runners: [...this.#deps.knownRunners],
+      halted: this.#halted,
       current: this.#current,
       queue: this.#queue,
       waitingForYou: waiting,
@@ -193,6 +201,7 @@ export class Daemon {
         stage: event.run.stageId,
         phase: event.run.phase,
         attempt: event.run.attempt,
+        ...this.#progress(event.run),
       });
     }
     switch (event.type) {
@@ -383,6 +392,8 @@ export class Daemon {
           return done('Fabrikken holder pause.');
         case 'resume': {
           store.setSetting(SETTING.paused, undefined);
+          // The owner resuming lifts the brake they set with /factory halt or the dashboard.
+          await rm(this.#deps.haltFile, { force: true });
           const halt = await this.#haltReason();
           if (halt) return done(`Genoptaget, men nødbremsen er stadig aktiv: ${halt}`, true);
           // The next pass decides between running, idle and waiting for quota.
@@ -391,12 +402,10 @@ export class Daemon {
         }
         case 'halt':
           await writeFile(this.#deps.haltFile, `Nødbremse sat ${this.#deps.now().toISOString()}\n`);
+          this.#halted = true;
           this.#currentAbort?.abort();
           this.#pause(`Nødbremse: ${this.#deps.haltFile} findes.`);
-          return done(
-            `Nødbremse aktiveret. Slet ${this.#deps.haltFile} og skriv /factory resume for at fortsætte.`,
-            true,
-          );
+          return done('Nødbremse aktiveret. Skriv /factory resume for at fortsætte.', true);
         case 'status':
           return done(this.statusText(), true);
         case 'boost': {
@@ -453,11 +462,18 @@ export class Daemon {
         }
         case 'hold': {
           await github.addLabels(project.repo, issue, [HOLD_LABEL]);
+          this.#markHeld(project.repo, issue, true);
           if (isCurrent) this.#currentAbort?.abort();
           const open = store.findOpenRun(project.name, issue);
           if (open && !isCurrent) this.#saveStatus(open, 'stopped', 'Sat på hold.');
-          return done(`${ref} er sat på hold. Fjern labelet ${HOLD_LABEL} for at frigive det.`);
+          return done(`${ref} er sat på hold. Frigiv det med /factory release #${String(issue)}.`);
         }
+        case 'release':
+          await github.removeLabel(project.repo, issue, HOLD_LABEL);
+          this.#markHeld(project.repo, issue, false);
+          return done(`${ref} er frigivet og kan tages fra Ready igen.`);
+        case 'up':
+          return done(await this.#moveUp(project, issue));
         case 'retry': {
           if (isCurrent) return done(`${ref} kører allerede.`, true);
           if (command.runner && !this.#deps.knownRunners.includes(command.runner)) {
@@ -584,7 +600,18 @@ export class Daemon {
       phase: run.phase,
       attempt: run.attempt,
       since: this.#deps.now().toISOString(),
+      runner: this.#deps.config.default_runner,
+      steps: [],
     };
+    try {
+      const project = (await this.#projects()).get(run.project);
+      this.#currentWorkflow = project
+        ? (await this.#deps.library(project).loadWorkflows()).get(run.workflow)
+        : undefined;
+    } catch {
+      this.#currentWorkflow = undefined;
+    }
+    Object.assign(this.#current, this.#progress(run));
     this.#setMode('running');
     try {
       const after = await this.#deps.engine.advance(run, controller.signal);
@@ -714,7 +741,54 @@ export class Daemon {
     await this.pollCommands();
   }
 
+  /** The progress steps and effective runner of a run, from its workflow. */
+  #progress(run: RunState): { runner: string; steps: CurrentWork['steps'] } {
+    const workflow = this.#currentWorkflow;
+    const stage = workflow?.stages[run.stageIndex];
+    return {
+      runner: run.overrides.runner ?? stage?.runner ?? this.#deps.config.default_runner,
+      steps: workflow ? stepsFor(workflow, run) : [],
+    };
+  }
+
+  /** Moves a card in Ready one place up on the board, above the Ready card before it. */
+  async #moveUp(project: Project, issue: number): Promise<string> {
+    const { board, config } = this.#deps;
+    const items = (await board.read()).items;
+    this.#boardItems = items;
+    const ready = items.filter((i) => i.status === config.board.status.ready);
+    const at = ready.findIndex((i) => i.repo === project.repo && i.number === issue);
+    const ref = `${project.name}#${String(issue)}`;
+    const card = ready[at];
+    const above = ready[at - 1];
+    if (!card) return `${ref} ligger ikke i "${config.board.status.ready}".`;
+    if (!above) return `${ref} er allerede øverst.`;
+    const before = items[items.indexOf(above) - 1];
+    await board.moveAfter(card.itemId, before?.itemId ?? null);
+    const queueAt = this.#queue.findIndex((q) => q.project === project.name && q.issue === issue);
+    const queued = this.#queue[queueAt];
+    if (queued && queueAt > 0) {
+      this.#queue.splice(queueAt, 1);
+      this.#queue.splice(queueAt - 1, 0, queued);
+    }
+    return `${ref} er rykket én plads op.`;
+  }
+
+  /** Updates the shown queue until the next board read. */
+  #markHeld(repo: string, issue: number, held: boolean): void {
+    const name = [...this.#repos].find(([, r]) => r === repo)?.[0];
+    for (const entry of this.#queue) {
+      if (entry.project === name && entry.issue === issue) entry.held = held;
+    }
+  }
+
   async #haltReason(): Promise<string | undefined> {
+    const reason = await this.#findHalt();
+    this.#halted = reason !== undefined;
+    return reason;
+  }
+
+  async #findHalt(): Promise<string | undefined> {
     if (existsSync(this.#deps.haltFile)) return `Nødbremse: ${this.#deps.haltFile} findes.`;
     try {
       for (const project of (await this.#projects()).values()) {

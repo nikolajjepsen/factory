@@ -39,6 +39,14 @@ class FakeBoard implements Board {
       items: this.items.map((i) => ({ ...i })),
     });
   }
+  moveAfter(itemId: string, afterItemId: string | null): Promise<void> {
+    const item = this.items.find((i) => i.itemId === itemId);
+    if (!item) return Promise.resolve();
+    this.items = this.items.filter((i) => i !== item);
+    const at = afterItemId === null ? 0 : this.items.findIndex((i) => i.itemId === afterItemId) + 1;
+    this.items.splice(at, 0, item);
+    return Promise.resolve();
+  }
   setStatus(itemId: string, status: string): Promise<void> {
     this.moves.push({ itemId, status });
     const item = this.items.find((i) => i.itemId === itemId);
@@ -499,6 +507,69 @@ describe('Daemon: commands from the API', () => {
     await h.daemon.execute({ command: 'resume' });
     expect(h.daemon.state()).toMatchObject({ mode: 'idle', reason: null });
     expect(h.lines.filter((l) => l.includes('Kommando /factory'))).toHaveLength(2);
+  });
+});
+
+describe('Daemon: dashboard controls', () => {
+  it('moves a Ready card one place up past other columns, and says when it is on top', async () => {
+    const h = await harness({
+      items: [
+        card(1),
+        card(2, { status: 'In progress' }),
+        card(3, { labels: ['factory:hold'] }),
+        card(4),
+      ],
+    });
+    // up reads the board itself; no pass is needed first.
+    expect(await h.daemon.execute({ command: 'up', issue: 4, project: 'demo' })).toMatchObject({
+      text: 'demo#4 er rykket én plads op.',
+    });
+    expect(h.board.items.map((i) => i.number)).toEqual([1, 2, 4, 3]);
+    await h.daemon.execute({ command: 'up', issue: 4, project: 'demo' });
+    expect(h.board.items.map((i) => i.number)).toEqual([4, 1, 2, 3]);
+    expect((await h.daemon.execute({ command: 'up', issue: 4, project: 'demo' })).text).toBe(
+      'demo#4 er allerede øverst.',
+    );
+  });
+
+  it('holds and releases a card, and shows it in the queue', async () => {
+    const h = await harness({ items: [card(12, { labels: ['factory:hold'] })] });
+    await h.github.addLabels('o/demo', 12, ['factory:hold']);
+    await h.daemon.tick();
+    expect(h.daemon.state().queue[0]).toMatchObject({ issue: 12, held: true });
+    await h.daemon.execute({ command: 'release', issue: 12, project: 'demo' });
+    expect(h.github.labelsOf(12)).toEqual([]);
+    expect(h.daemon.state().queue[0]?.held).toBe(false);
+  });
+
+  it('lifts its own emergency brake on resume', async () => {
+    const h = await harness({ items: [] });
+    await h.daemon.execute({ command: 'halt' });
+    expect(h.daemon.state().halted).toBe(true);
+    expect(await h.daemon.tick()).toBe('paused');
+    await h.daemon.execute({ command: 'resume' });
+    expect(existsSync(join(h.dir, 'HALT'))).toBe(false);
+    expect(h.daemon.state().halted).toBe(false);
+    expect(await h.daemon.tick()).toBe('idle');
+  });
+
+  it('shows the workflow steps, the runner and the projects while working', async () => {
+    const h = await harness({ runner: (inner) => new GatedRunner(inner) });
+    const running = h.daemon.tick();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const state = h.daemon.state();
+    expect(state.current).toMatchObject({
+      runner: 'codex',
+      steps: [
+        { label: 'implement', state: 'active' },
+        { label: 'CI', state: 'pending' },
+        { label: 'Review', state: 'pending' },
+      ],
+    });
+    expect(state.projects).toEqual([{ name: 'demo', repo: 'o/demo' }]);
+    expect(state.runners).toEqual(['codex']);
+    await h.daemon.execute({ command: 'stop', issue: 12, project: 'demo' });
+    await running;
   });
 });
 

@@ -110,6 +110,8 @@ export interface BoardSnapshot {
 export interface Board {
   read(): Promise<BoardSnapshot>;
   setStatus(itemId: string, status: string): Promise<void>;
+  /** Moves an item right after another, or to the top with null. */
+  moveAfter(itemId: string, afterItemId: string | null): Promise<void>;
 }
 
 export function parseBoardPage(data: unknown): { snapshot: BoardSnapshot; next: string | null } {
@@ -173,6 +175,18 @@ export class GraphQLBoard implements Board {
     } while (after);
     this.#snapshot = snapshot;
     return snapshot;
+  }
+
+  async moveAfter(itemId: string, afterItemId: string | null): Promise<void> {
+    const snapshot = this.#snapshot ?? (await this.read());
+    await this.octokit.graphql(
+      `mutation($project: ID!, $item: ID!, $after: ID) {
+        updateProjectV2ItemPosition(input: { projectId: $project, itemId: $item, afterId: $after }) {
+          clientMutationId
+        }
+      }`,
+      { project: snapshot.projectId, item: itemId, after: afterItemId },
+    );
   }
 
   async setStatus(itemId: string, status: string): Promise<void> {

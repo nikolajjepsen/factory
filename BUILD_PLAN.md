@@ -17,7 +17,7 @@ Denne plan er ordren til den agent, der bygger fabrikken (Codex eller Claude Cod
 | GitHub | `gh` CLI-login + Octokit (REST + GraphQL til Projects v2 og sub-issues) |
 | Codex | `codex app-server` over stdio (JSON-RPC/JSONL), Nikolajs eget ChatGPT Plus-login |
 | Daemon-API | Hono på `127.0.0.1:4712`: `GET /state`, `GET /events` (SSE), `POST /commands`. Bearer-token påkrævet |
-| Dashboard | Separat pakke `dashboard/`, kører i en container under **OrbStack**. Tynd klient uden egen state, ingen frontend-build |
+| Dashboard | Separat pakke `dashboard/`, kører i en container under **OrbStack**. Tynd klient uden egen state. Frontend-build med esbuild (Preact) er tilladt |
 | Container-runtime | OrbStack. Dashboardet nås på `https://dashboard.ai-factory.orb.local`. Docker Desktop understøttes som fallback |
 | Motor | Daemon, `codex app-server`, `gh` og worktrees kører **native** på macOS, aldrig i Docker (M9 undtaget) |
 | Arbejdstid | Døgnet rundt. Ingen kvote reserveres til Nikolaj |

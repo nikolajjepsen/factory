@@ -1,0 +1,38 @@
+# Kontrolrummet. Under OrbStack: https://dashboard.ai-factory.orb.local (ingen ports: nødvendige).
+# Docker Desktop: docker compose --profile docker-desktop up dashboard-desktop → http://127.0.0.1:4711
+name: ai-factory
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    image: ai-factory-dashboard
+    restart: unless-stopped
+    environment:
+      # direct: daemonens API på værten (live). github: Factory Status-issuet (op til 1 min forsinkelse).
+      FACTORY_MODE: ${FACTORY_MODE:-direct}
+      FACTORY_API_URL: ${FACTORY_API_URL:-http://host.orb.internal:4712}
+      FACTORY_API_TOKEN_FILE: /run/secrets/factory_api_token
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      FACTORY_STATUS_REPO: ${FACTORY_STATUS_REPO:-nikolajjepsen/factory}
+      DASHBOARD_NAME: ${DASHBOARD_NAME:-Nikolaj}
+      TZ: ${TZ:-Europe/Copenhagen}
+    secrets:
+      - factory_api_token
+    # Port 80 as the non-root user.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
+
+  dashboard-desktop:
+    extends: dashboard
+    profiles: [docker-desktop]
+    environment:
+      FACTORY_API_URL: ${FACTORY_API_URL:-http://host.docker.internal:4712}
+    ports:
+      - '127.0.0.1:4711:80'
+
+secrets:
+  factory_api_token:
+    # I github-tilstand uden adgang til daemonen: FACTORY_API_TOKEN_PATH=/dev/null.
+    file: ${FACTORY_API_TOKEN_PATH:-~/.ai-factory/api-token}

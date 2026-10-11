@@ -16,6 +16,8 @@ export const COMMANDS = [
   'reject',
   'approve',
   'boost',
+  'up',
+  'release',
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];
 
@@ -26,6 +28,8 @@ export const NEEDS_ISSUE: readonly CommandName[] = [
   'workflow',
   'reject',
   'approve',
+  'up',
+  'release',
 ];
 
 export const Command = z
@@ -65,3 +69,32 @@ export const CommandResult = z.object({
   reply: z.boolean(),
 });
 export type CommandResult = z.infer<typeof CommandResult>;
+
+/**
+ * The `/factory` comment line for a command, for the dashboard's `github` mode. The daemon's
+ * ChatOps parser reads it back as the same command.
+ */
+export function toChatOps(command: Command): string {
+  const ref =
+    command.issue === undefined ? '' : ` ${command.project ?? ''}#${String(command.issue)}`;
+  switch (command.command) {
+    case 'retry':
+      return `/factory retry${ref}${command.runner ? ` --runner ${command.runner}` : ''}`;
+    case 'focus':
+      return `/factory focus ${command.project ?? 'off'}`;
+    case 'workflow':
+      return `/factory workflow${ref} ${command.workflow ?? ''}`;
+    case 'reject':
+      return `/factory reject${ref} "${(command.feedback ?? '').replace(/\n+/g, ' ')}"`;
+    case 'boost':
+      return `/factory boost${
+        command.minutes === undefined
+          ? ''
+          : command.minutes === 0
+            ? ' off'
+            : ` ${String(command.minutes)}m`
+      }`;
+    default:
+      return `/factory ${command.command}${ref}`;
+  }
+}

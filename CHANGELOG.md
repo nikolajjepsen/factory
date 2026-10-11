@@ -4,6 +4,12 @@
 
 ### Tilføjet
 
+- M5b: Kontrolrummet i `dashboard/` (Hono-server og Preact-UI bygget med esbuild) som container under OrbStack på `https://dashboard.ai-factory.orb.local`. Tema "Natskift": status og heartbeat, Pause/Genoptag, Nødstop, Skift runner, "Venter på dig", "Arbejder på nu" med workflowets trin, kø med op-knap og Hold, kvotemålere med dagsbudget og boost, dagens tal, log, projekter og fokus. Se `dashboard/README.md`.
+- M5b: `direct`-tilstand følger daemonens API live. `github`-tilstand læser "Factory Status"-issuet og sender kommandoer som `/factory`-kommentarer, uden adgang til daemonen.
+- M5b: `docker-compose.yml` (`name: ai-factory`, servicen `dashboard`, tokenet som secret, ingen porte) og profilen `docker-desktop` på `127.0.0.1:4711`.
+- M5b: Nye kommandoer `/factory up #N` (ryk kortet én plads op i Ready på boardet) og `/factory release #N` (frigiv et kort på hold).
+- M5b: Tilstanden har `projects`, `runners`, `halted`, `held` pr. kort og trin og runner for den aktuelle opgave. Statusissuets JSON læses med det delte skema.
+- M5b: `/factory resume` sletter `~/.ai-factory/HALT`.
 - M5a: Daemonens API på `127.0.0.1:4712` (`api.port` i `factory.yml`): `GET /state`, `GET /events` (SSE med hele tilstanden ved forbindelse og derefter kun ændrede felter og nye loglinjer) og `POST /commands` gennem samme handler som ChatOps. Kræver bearer-tokenet fra `~/.ai-factory/api-token` (`0600`), ellers `401`. `factory api-token` viser det. Se `docs/api.md`.
 - M5a: Pakken `packages/protocol` (`@ai-factory/protocol`) med zod-skemaer for tilstand, events og kommandoer. Repoet er nu et pnpm-workspace.
 - M5a: Tilstanden har `today` (PR'er i dag, merged, first-pass), og statusissuet viser dem. `reason` er altid med (`null` uden grund).

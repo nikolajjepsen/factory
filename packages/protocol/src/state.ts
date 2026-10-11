@@ -17,6 +17,8 @@ export const QueueEntry = z.object({
   url: z.string(),
   /** Why the daemon passes over this card, in Danish. Unset for workable cards. */
   skip: z.string().optional(),
+  /** The card has `factory:hold`; `release` frees it. */
+  held: z.boolean(),
 });
 export type QueueEntry = z.infer<typeof QueueEntry>;
 
@@ -29,6 +31,13 @@ export const WaitingEntry = z.object({
 });
 export type WaitingEntry = z.infer<typeof WaitingEntry>;
 
+/** One box in the "working on" progress bar: an agent turn or a gate. */
+export const Step = z.object({
+  label: z.string(),
+  state: z.enum(['done', 'active', 'pending']),
+});
+export type Step = z.infer<typeof Step>;
+
 export const CurrentWork = z.object({
   project: z.string(),
   issue: z.number(),
@@ -39,6 +48,9 @@ export const CurrentWork = z.object({
   phase: z.string(),
   attempt: z.number(),
   since: z.string(),
+  runner: z.string(),
+  /** Every agent turn and gate of the workflow, in order. Empty if the workflow is unknown. */
+  steps: z.array(Step),
 });
 export type CurrentWork = z.infer<typeof CurrentWork>;
 
@@ -67,6 +79,12 @@ export const FactoryState = z.object({
   /** Until when `/factory boost` sets the quota rules aside. Codex' own limit still applies. */
   quotaOverrideUntil: z.iso.datetime().nullable(),
   focus: z.string().nullable(),
+  /** The projects in projects.yml. */
+  projects: z.array(z.object({ name: z.string(), repo: z.string() })),
+  /** Runners this daemon can use, for "switch runner". */
+  runners: z.array(z.string()),
+  /** The emergency brake is on (`~/.ai-factory/HALT` or a `factory:halt` label). */
+  halted: z.boolean(),
   current: CurrentWork.nullable(),
   queue: z.array(QueueEntry),
   waitingForYou: z.array(WaitingEntry),

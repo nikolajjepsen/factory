@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toChatOps } from '@ai-factory/protocol';
 import { Command, parseChatOps } from './commands.js';
 
 const parse = (body: string, context = {}) => parseChatOps(body, context);
@@ -76,7 +77,7 @@ describe('parseChatOps', () => {
     );
     expect(commands).toEqual([]);
     expect(errors).toEqual([
-      '"/factory dance": ukendt kommando "dance". Kendte: pause, resume, status, halt, stop, retry, hold, focus, workflow, reject, approve, boost.',
+      '"/factory dance": ukendt kommando "dance". Kendte: pause, resume, status, halt, stop, retry, hold, focus, workflow, reject, approve, boost, up, release.',
       '"/factory stop": /factory stop needs an issue, e.g. #12',
       '"/factory pause now": uventede ord: now.',
       '"/factory": mangler en kommando.',
@@ -97,5 +98,32 @@ describe('Command schema', () => {
     });
     expect(Command.safeParse({ command: 'hold' }).success).toBe(false);
     expect(Command.safeParse({ command: 'explode' }).success).toBe(false);
+  });
+});
+
+describe('toChatOps', () => {
+  it('writes every command as a /factory line the ChatOps parser reads back unchanged', () => {
+    const commands: Command[] = [
+      { command: 'pause' },
+      { command: 'resume' },
+      { command: 'status' },
+      { command: 'halt' },
+      { command: 'stop', issue: 12, project: 'loge-app' },
+      { command: 'retry', issue: 12, project: 'loge-app', runner: 'claude' },
+      { command: 'hold', issue: 3, project: 'o/repo' },
+      { command: 'release', issue: 3, project: 'loge-app' },
+      { command: 'up', issue: 4, project: 'loge-app' },
+      { command: 'focus', project: 'loge-app' },
+      { command: 'focus' },
+      { command: 'workflow', issue: 3, project: 'loge-app', workflow: 'bugfix' },
+      { command: 'reject', issue: 3, project: 'loge-app', feedback: 'Brug Math.min' },
+      { command: 'approve', issue: 3, project: 'loge-app' },
+      { command: 'boost' },
+      { command: 'boost', minutes: 90 },
+      { command: 'boost', minutes: 0 },
+    ];
+    for (const command of commands) {
+      expect(parse(toChatOps(command))).toEqual({ commands: [command], errors: [] });
+    }
   });
 });

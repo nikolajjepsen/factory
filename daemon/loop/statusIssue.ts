@@ -1,10 +1,10 @@
 import type { GitHub } from '../github/github.js';
 import { percent } from '../quota/policy.js';
 import { percentLeft } from '../quota/quota.js';
+import { parseStatusBody, STATUS_ISSUE_TITLE, statusBlock } from '@ai-factory/protocol';
 import type { FactoryState } from './state.js';
 
-export const STATUS_ISSUE_TITLE = 'Factory Status';
-const MARKER = 'factory-status:v1';
+export { STATUS_ISSUE_TITLE };
 
 const modeLabel: Record<FactoryState['mode'], string> = {
   running: 'Kører',
@@ -24,9 +24,7 @@ function time(iso: string, timeZone?: string): string {
  */
 export function renderStatusIssue(state: FactoryState, timeZone?: string): string {
   const lines = [
-    `<!-- ${MARKER}`,
-    JSON.stringify(state),
-    '-->',
+    statusBlock(state),
     '## Factory Status',
     '',
     `**Tilstand:** ${modeLabel[state.mode]}${state.reason ? ` – ${state.reason}` : ''}`,
@@ -100,21 +98,13 @@ export function renderStatusIssue(state: FactoryState, timeZone?: string): strin
   lines.push(
     '',
     '---',
-    'Kommandoer (kun fra ejeren): `/factory pause | resume | status | halt | stop #N | retry #N [--runner x] | hold #N | focus <projekt>|off | workflow #N <navn> | reject #N "…" | approve #N | boost [3h|off]`',
+    'Kommandoer (kun fra ejeren): `/factory pause | resume | status | halt | stop #N | retry #N [--runner x] | hold #N | release #N | up #N | focus <projekt>|off | workflow #N <navn> | reject #N "…" | approve #N | boost [3h|off]`',
   );
   return lines.join('\n');
 }
 
 /** Reads the state back out of a status issue body, or undefined if it has none. */
-export function parseStatusIssue(body: string): FactoryState | undefined {
-  const match = new RegExp(`<!-- ${MARKER}\\n(.*)\\n-->`).exec(body);
-  if (!match?.[1]) return undefined;
-  try {
-    return JSON.parse(match[1]) as FactoryState;
-  } catch {
-    return undefined;
-  }
-}
+export const parseStatusIssue = parseStatusBody;
 
 /** Finds or creates (and pins) the status issue once, then edits its body on every heartbeat. */
 export class StatusIssue {

@@ -11,6 +11,9 @@ const state: FactoryState = {
   quota: null,
   quotaOverrideUntil: null,
   focus: 'ekvilibrium',
+  projects: [{ name: 'ekvilibrium', repo: 'o/ekvilibrium' }],
+  runners: ['codex'],
+  halted: false,
   today: { prs: 4, merged: 2, firstPass: 71 },
   current: {
     project: 'ekvilibrium',
@@ -22,10 +25,22 @@ const state: FactoryState = {
     phase: 'code',
     attempt: 2,
     since: '2026-10-11T17:58:00.000Z',
+    runner: 'codex',
+    steps: [
+      { label: 'implement', state: 'active' },
+      { label: 'CI', state: 'pending' },
+    ],
   },
   queue: [
-    { project: 'ekvilibrium', issue: 8, title: 'Næste', url: 'u8' },
-    { project: 'ekvilibrium', issue: 9, title: 'Holdt', url: 'u9', skip: 'factory:hold' },
+    { project: 'ekvilibrium', issue: 8, title: 'Næste', url: 'u8', held: false },
+    {
+      project: 'ekvilibrium',
+      issue: 9,
+      title: 'Holdt',
+      url: 'u9',
+      skip: 'factory:hold',
+      held: true,
+    },
   ],
   waitingForYou: [
     {

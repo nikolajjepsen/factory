@@ -33,6 +33,7 @@ pnpm factory workflow validate                     # tjek workflow-filerne
 pnpm factory daemon                                # kør fabrikken i forgrunden
 pnpm factory install-service                       # kør den døgnet rundt som launchd-agent
 pnpm factory api-token                             # tokenet til daemonens API på 127.0.0.1:4712
+docker compose up -d dashboard                     # kontrolrummet på https://dashboard.ai-factory.orb.local
 pnpm format             # ret formatering med Prettier
 ```
 
@@ -67,7 +68,8 @@ Fabrikken ændrer aldrig selv CI-konfiguration eller branch protection. En PR, d
 - `runners/` – motor-adaptere (Codex først)
 - `packages/protocol/` – zod-skemaer for tilstand, events og kommandoer, delt af daemon og dashboard
 - `agents/baseline/` – generalist-agenter pr. rolle
-- `dashboard/` – kontrolrummet som container
+- `dashboard/` – kontrolrummet som container (se `dashboard/README.md`)
+- `docker-compose.yml` – compose-projektet `ai-factory` med servicen `dashboard`
 - `templates/` – skabeloner til produktafdelingen
 
 ## Arkitektur i én linje
