@@ -22,6 +22,7 @@ Denne plan er ordren til den agent, der bygger fabrikken (Codex eller Claude Cod
 | Motor | Daemon, `codex app-server`, `gh` og worktrees kører **native** på macOS, aldrig i Docker (M9 undtaget) |
 | Arbejdstid | Døgnet rundt. Ingen kvote reserveres til Nikolaj |
 | Projekter | Projektagnostisk fra dag ét: `projects.yml` i fabrikken, `.factory/` i hvert projekt |
+| Workflows | Deklarative YAML-filer fortolket af en workflow-motor i daemonen. Ordforrådet er kode, kombinationen er konfiguration |
 | Første projekt | `loge-app` (toy-feature: medlemsliste med profilbillede) |
 
 ## Milepæle
@@ -59,17 +60,65 @@ Hver milepæl er en eller flere PR'er. En milepæl er færdig, når **alle** acc
 
 **Accept:** Mod et testrepo kan `factory run` løse et simpelt issue ("tilføj en funktion + test"), pushe branch og åbne PR. Ctrl-C/interrupt efterlader en ren WIP-commit.
 
-### M3 – Daemon og samlebånd
+### M3 – Daemon og workflow-motor
+
+Flowet må **ikke** hårdkodes. Daemonen fortolker workflow-filer, og M3 leverer motoren, et fast ordforråd og et baseline-workflow.
+
+**Workflow-filer**
+
+- Placering og arv: `agents/baseline/workflows/*.yml` (fabrikken) → `<projekt>/.factory/workflows/*.yml` (override pr. fil-id) → pr. issue med `/factory workflow #N <navn>`.
+- Valg af workflow: label `workflow:<navn>`, ellers issue-type (`feature`, `bug`, `chore`), ellers `feature`.
+- Skema (zod) med klare fejlbeskeder. `factory workflow validate` validerer alle filer, og CI kører den.
+
+```yaml
+# eksempel: agents/baseline/workflows/feature.yml
+stages:
+  - id: implement
+    agent: implementer
+    strategy: direct              # direct | plan_then_code
+    gates:
+      - ci
+      - review: { agent: reviewer, rubric: rubrics/code.md, min_score: 7 }
+    on_fail: [retry_with_feedback x3, escalate: human]
+```
+
+**Ordforråd (minimum i M3)**
+
+| Nøgle | Adfærd |
+| --- | --- |
+| `agent: <navn>` | Opløs agentfil (baseline indtil M6) og kør en turn via runneren |
+| `strategy: direct` | Agenten løser opgaven i én turn |
+| `strategy: plan_then_code` | Første turn skriver en plan (`PLAN.md` på branchen), planens gates køres (`on: plan`), derefter koder anden turn efter planen |
+| gate `ci` | Vent på GitHub-checks på PR'en. Rød → fejl med CI-loggens relevante uddrag som feedback |
+| gate `review: { agent, rubric, min_score, on? }` | Kør kritiker-/reviewer-agent med output + rubrik. Den svarer med JSON `{ score, passed, feedback[] }` (zod-valideret). Under `min_score` → fejl |
+| gate `human: always \| approve_pr` | Label `factory:needs-you`, notifikation, vent på svar/godkendelse. Afvisning → fejl med Nikolajs tekst som feedback |
+| `retry_with_feedback xN` | Kør stagen igen med al feedback indtil nu tilføjet prompten, højst N gange |
+| `switch_strategy: <s>` | Kør stagen igen med en anden strategy |
+| `switch_runner: <r>` | Kør stagen igen på en anden runner (fejler pænt, hvis runneren ikke findes) |
+| `switch_agent: <navn>` | Kør stagen igen med en anden agent (fx en specialist) |
+| `escalate: human` | Label `factory:blocked`, notifikation, stop |
+
+- Motoren er en generisk løkke: for hver stage → kør agent → kør gates i rækkefølge → første fejlede gate tager næste trin på eskaleringsstigen → stigen tom = `factory:blocked`.
+- Hvert forsøg logges i SQLite: `run_id, issue, stage, attempt, agent, runner, strategy, gate, score, passed, feedback, tokens, duration`. Dette er datagrundlaget for M7b.
+- Nye ord i ordforrådet tilføjes som almindelige features med tests, aldrig som specialtilfælde i motoren.
+
+**Baseline-workflows i M3:** `feature` (implement med ci + review), `bugfix` (kræver en test, der reproducerer fejlen, før fix), `chore` (kun ci). `analysis`/`spec`/`plan`-stages kommer i M7.
+
+**Daemon**
 
 - Tilstandsmaskine: `running | idle | paused | waiting_quota | error` (+ `offline` udledt af heartbeat).
 - Loop: hent top-issue fra GitHub Project-kolonnen "Klar" (rækkefølge = prioritet), spring over hvis afhængigheder (sub-issues/"blocked by") ikke er lukkede eller label `factory:hold`.
-- Flow: implementer → PR → vent på CI → rød: tilbage til implementer (maks `max_fix_iterations`, default 3) → grøn: reviewer → ændringer: tilbage → godkendt: label `factory:ready-to-merge` og notifikation. Over loftet: label `factory:blocked`.
+- Når alle stages er godkendt: label `factory:ready-to-merge` og notifikation.
 - Heartbeat hvert minut til et fastgjort issue "Factory Status" i fabrikkens repo (redigeres, ikke nye kommentarer).
-- ChatOps fra Nikolaj (tjek forfatter): `/factory pause|resume|status|stop #N|retry #N [--runner x]|hold #N|focus <projekt>`. Kommandoer tjekkes mellem trin.
+- ChatOps fra Nikolaj (tjek forfatter): `/factory pause|resume|status|stop #N|retry #N [--runner x]|hold #N|focus <projekt>|workflow #N <navn>|reject #N "<feedback>"`. `reject` tæller som en fejlet gate på den aktuelle stage og bruger teksten som feedback. Kommandoer tjekkes mellem trin.
 - Nødbremse: label `factory:halt` på et projektrepo eller fil `~/.ai-factory/HALT`.
 - Kører som launchd-agent på macOS (`factory install-service`).
 
-**Accept:** Toy-issue i et testrepo går fra "Klar" til en grøn, reviewet PR uden menneskelig indgriben. `/factory pause` og `factory:halt` virker inden for ét trin.
+**Accept:**
+- Toy-issue i et testrepo går fra "Klar" til en grøn, reviewet PR uden menneskelig indgriben.
+- En ændring **kun** i en workflow-fil (fx tilføj en review-gate eller skift `strategy`) ændrer næste kørsels forløb, synligt i loggen, uden kodeændringer.
+- En simuleret fejlende gate går op ad eskaleringsstigen i den angivne rækkefølge og ender i `factory:blocked`.
+- `/factory pause`, `/factory reject` og `factory:halt` virker inden for ét trin.
 
 ### M4 – Kvotepolitik
 
@@ -122,6 +171,16 @@ Hver milepæl er en eller flere PR'er. En milepæl er færdig, når **alle** acc
 - Analysten læser `docs/vision.md` og spørger kun om dyre eller smagsprægede valg. Resten bliver til antagelser.
 
 **Accept:** Issue "Jeg vil have et galleri" ender som epic med sub-issues efter én runde svar fra Nikolaj.
+
+### M7b – Kvalitetsløkken
+
+- Kritiker-agent `agents/baseline/critic.md`: bedømmer et output mod en rubrik og svarer i gate-JSON-formatet. Kører på en anden runner end forfatteren, når det er muligt.
+- Rubrikker som markdown i `agents/baseline/rubrics/` og `<projekt>/.factory/rubrics/`: `decision-brief.md`, `spec.md`, `impl-plan.md`, `code.md`. Hvert punkt har point, så scoren kan forklares.
+- `feature`-workflowet udvides med review-gates på analyse, spec og plan.
+- Nøgletal pr. stage og projekt i kontrolrummet: first-pass rate, iterationer i snit, kvoteforbrug, menneskelige afvisninger efter godkendt kritik (= for slap rubrik).
+- Forslagsløkke: når samme type feedback går igen (≥ 3 gange inden for 30 dage, grupperet af en agent), åbner fabrikken en PR mod den relevante rubrik, agentfil eller workflow-fil med begrundelse og eksempler. Fabrikken merger aldrig sine egne forslag.
+
+**Accept:** Tre ens `/factory reject`-begrundelser på analyser giver én PR med et konkret forslag til `decision-brief.md`. Nøgletallene vises i kontrolrummet.
 
 ### M8 – Notifikationer
 
