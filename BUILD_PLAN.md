@@ -185,6 +185,18 @@ stages:
 
 **Accept:** Tre ens `/factory reject`-begrundelser på analyser giver én PR med et konkret forslag til `decision-brief.md`. Nøgletallene vises i kontrolrummet.
 
+### M8a – Sparsomt kvoteforbrug
+
+Erfaringer fra første gennemløb af `idea` på fabrikken selv: en spec-agent brugte 1,4 mio. tokens på fire forsøg, fordi den ikke kunne køre projektets tjek, og fordi motoren prøvede igen, selv om agenten meldte "blocked".
+
+- **"blocked" eskalerer med det samme.** Når agenten selv svarer `status: blocked`, får issuet `factory:blocked` og en kommentar med agentens begrundelse, uden at stigen bruges. Fejl i runneren og fejlede gates bruger stadig stigen.
+- **Projektets afhængigheder installeres uden for sandkassen.** `setup` i `<projekt>/.factory/project.yml` (fx `pnpm install --frozen-lockfile`) køres af fabrikken i worktree'et, når det oprettes, og når låsefilen ændrer sig. Fejler `setup`, blokeres issuet med et uddrag af outputtet.
+- **Tjek-kommandoen gives kun til agenter, der ændrer kode.** `checks: false` i en agentfils frontmatter slår `ci` fra. Baseline-`spec` har den.
+- **Model og reasoning pr. rolle.** `model` og `effort` i agentfilens frontmatter og pr. rolle i `project.yml` (`runners: { analyst: { runner: codex, model: …, effort: low } }`). Rækkefølgen følger runner-valget. Uden valg bruges Codex' standard.
+- **Forbruget er synligt.** Loggen viser tokens pr. turn, og forsøgsloggen gemmer model og effort, så M7b kan sammenligne roller og modeller.
+
+**Accept:** factory#2 ("factory doctor") går fra spec til epic, uden at spec-agenten melder blocked på grund af tjek eller afhængigheder. En agent, der svarer `blocked`, giver `factory:blocked` efter ét forsøg. En rolle med `effort: low` kører med det, synligt i loggen og i forsøgsloggen.
+
 ### M8 – Notifikationer
 
 - ntfy (topic i config): `needs_decision`, `blocked`, `quota_exhausted`, `pr_ready`, `error`. Stille tid 23:00–07:00 (samles til morgen).
