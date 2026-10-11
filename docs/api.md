@@ -23,7 +23,7 @@ Skemaerne bor i `packages/protocol` (`@ai-factory/protocol`), som daemonen og da
 
 - `mode` (`running | idle | paused | waiting_quota | error`), `reason` (dansk eller `null`), `heartbeat`, `nextStart`
 - `quota` (snapshot og dagens pacing-budget) og `quotaOverrideUntil` (aktiv `/factory boost`)
-- `focus`, `current` (opgave, workflow, stage, fase, forsøg), `queue`, `waitingForYou`
+- `focus` og `projects` (navn, repo og `enabled`), `current` (opgave, workflow, stage, fase, forsøg), `queue`, `waitingForYou`
 - `today`: PR'er åbnet i dag, hvor mange af dem der er merged, og first-pass (andelen af dagens færdige stages, der bestod i første forsøg)
 - `log`: de seneste 50 linjer
 

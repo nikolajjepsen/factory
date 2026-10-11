@@ -77,6 +77,14 @@ function parseLine(
       if (project !== 'off') draft.project = project;
       break;
     }
+    case 'enable':
+    case 'disable': {
+      // In a project repo the project may be left out.
+      const project = args.shift() ?? context.project;
+      if (!project) return 'skriv projektet, fx loge-app.';
+      draft.project = project;
+      break;
+    }
     case 'workflow':
       draft.workflow = args.shift();
       break;

@@ -3,6 +3,7 @@ import type { BoardItem } from '../github/board.js';
 import { pickNext } from './picker.js';
 
 const project = { name: 'ekvilibrium', repo: 'o/ekvilibrium', path: '/p' };
+const other = { name: 'loge-app', repo: 'o/loge-app', path: '/q' };
 const item = (number: number, overrides: Partial<BoardItem> = {}): BoardItem => ({
   itemId: `i${String(number)}`,
   status: 'Ready',
@@ -18,8 +19,12 @@ const item = (number: number, overrides: Partial<BoardItem> = {}): BoardItem => 
 });
 const ctx = (overrides = {}) => ({
   readyStatus: 'Ready',
-  projectsByRepo: new Map([[project.repo, project]]),
+  projectsByRepo: new Map([
+    [project.repo, project],
+    [other.repo, other],
+  ]),
   focus: null,
+  disabled: new Set<string>(),
   hasRun: () => false,
   ...overrides,
 });
@@ -56,6 +61,18 @@ describe('pickNext', () => {
       'fokus er på loge-app',
     );
     expect(pickNext([item(1)], ctx({ hasRun: () => true })).next).toBeUndefined();
+  });
+
+  it('follows board order across projects and skips disabled ones', () => {
+    const items = [item(1, { repo: other.repo }), item(2), item(3, { repo: other.repo })];
+    expect(pickNext(items, ctx()).next).toMatchObject({ project: 'loge-app', issue: 1 });
+    const { queue, next } = pickNext(items, ctx({ disabled: new Set(['loge-app']) }));
+    expect(next).toMatchObject({ project: 'ekvilibrium', issue: 2 });
+    expect(queue.map((q) => q.skip)).toEqual([
+      'loge-app er slukket',
+      undefined,
+      'loge-app er slukket',
+    ]);
   });
 
   it('returns no next card for an empty column', () => {

@@ -18,8 +18,8 @@ export function sampleState(patch: Partial<FactoryState> = {}): FactoryState {
     quotaOverrideUntil: null,
     focus: null,
     projects: [
-      { name: 'loge-app', repo: 'o/loge-app' },
-      { name: 'ekvilibrium', repo: 'o/ekvilibrium' },
+      { name: 'loge-app', repo: 'o/loge-app', enabled: true },
+      { name: 'ekvilibrium', repo: 'o/ekvilibrium', enabled: false },
     ],
     runners: ['codex', 'claude'],
     halted: false,

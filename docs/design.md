@@ -47,7 +47,7 @@ Fabrikken er projektagnostisk. Den ejer motoren, og hvert projekt ejer sin egen 
 - **Agent-arv:** `baseline/implementer` → `<projekt>/implementer` → domænespecialist (fx `galleri`). En agent er en fil med `extends`, `scope` (labels, stier), `context` og evt. `runner`.
 - **Routing:** planneren sætter `area:`-labels. Daemonen vælger den mest specifikke agent, der matcher, og falder ellers tilbage til baseline.
 - **Læring:** gentagne review-fund i et domæne bliver til en PR mod specialistens fil, som Nikolaj godkender.
-- **Portefølje:** `projects.yml` fordeler arbejdet med vægte og kvoteandele. `focus` låser fabrikken til ét projekt. Projekterne er isoleret med egne worktrees og secrets.
+- **Portefølje:** `projects.yml` lister projekterne. Boardets rækkefølge er prioriteten på tværs af dem. `focus` låser fabrikken til ét projekt, og hvert projekt kan tændes og slukkes. Projekterne er isoleret med egne worktrees og secrets.
 
 ## Leverandørneutralitet
 

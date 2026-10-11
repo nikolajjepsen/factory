@@ -11,7 +11,7 @@ const state: FactoryState = {
   quota: null,
   quotaOverrideUntil: null,
   focus: 'ekvilibrium',
-  projects: [{ name: 'ekvilibrium', repo: 'o/ekvilibrium' }],
+  projects: [{ name: 'ekvilibrium', repo: 'o/ekvilibrium', enabled: true }],
   runners: ['codex'],
   halted: false,
   today: { prs: 4, merged: 2, firstPass: 71 },

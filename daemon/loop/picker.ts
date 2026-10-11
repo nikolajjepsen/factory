@@ -10,14 +10,16 @@ export interface PickContext {
   /** Projects by repo (`owner/repo`). */
   projectsByRepo: ReadonlyMap<string, Project>;
   focus: string | null;
+  /** Projects switched off with `/factory disable`. */
+  disabled: ReadonlySet<string>;
   /** Whether the factory already has a run for this issue that should not be restarted. */
   hasRun: (project: string, issue: number) => boolean;
 }
 
 /**
  * Looks at the "ready" column in board order and returns the queue with a reason for every card
- * the daemon passes over, and the first card it can work on. The board decides priority; the
- * daemon never reorders.
+ * the daemon passes over, and the first card it can work on. The board decides priority, also
+ * across projects; the daemon never reorders.
  */
 export function pickNext(
   items: readonly BoardItem[],
@@ -39,19 +41,21 @@ export function pickNext(
       ? 'lukket'
       : !project
         ? `${item.repo} er ikke i projects.yml`
-        : ctx.focus && project.name !== ctx.focus
-          ? `fokus er på ${ctx.focus}`
-          : item.labels.includes(HOLD_LABEL)
-            ? HOLD_LABEL
-            : item.labels.includes(BLOCKED_LABEL)
-              ? `${BLOCKED_LABEL} (brug /factory retry)`
-              : item.openSubIssues.length > 0
-                ? `venter på sub-issues ${item.openSubIssues.map((n) => `#${String(n)}`).join(', ')}`
-                : item.openBlockers.length > 0
-                  ? `blokeret af ${item.openBlockers.join(', ')}`
-                  : ctx.hasRun(project.name, item.number)
-                    ? 'har allerede en kørsel'
-                    : undefined;
+        : ctx.disabled.has(project.name)
+          ? `${project.name} er slukket`
+          : ctx.focus && project.name !== ctx.focus
+            ? `fokus er på ${ctx.focus}`
+            : item.labels.includes(HOLD_LABEL)
+              ? HOLD_LABEL
+              : item.labels.includes(BLOCKED_LABEL)
+                ? `${BLOCKED_LABEL} (brug /factory retry)`
+                : item.openSubIssues.length > 0
+                  ? `venter på sub-issues ${item.openSubIssues.map((n) => `#${String(n)}`).join(', ')}`
+                  : item.openBlockers.length > 0
+                    ? `blokeret af ${item.openBlockers.join(', ')}`
+                    : ctx.hasRun(project.name, item.number)
+                      ? 'har allerede en kørsel'
+                      : undefined;
     if (skip) entry.skip = skip;
     else next ??= entry;
     queue.push(entry);

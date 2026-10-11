@@ -62,6 +62,7 @@ Alle knapper sender samme kommando som ChatOps (`docs/daemon.md`):
 | Pil op i køen | `up #N` (flytter kortet én plads op i Ready på boardet) |
 | Hold / Frigiv | `hold #N` / `release #N` |
 | Fokus | `focus <projekt>` / `focus off` |
+| Kontakt ved projektet | `enable <projekt>` / `disable <projekt>` |
 | Boost til midnat | `boost` / `boost off` |
 
 "Klar til merge" linker til PR'en. Merge sker på GitHub.

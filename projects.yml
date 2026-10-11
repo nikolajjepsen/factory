@@ -1,4 +1,5 @@
-# Projekter, fabrikken arbejder på. M6 tilføjer focus, weight og quota_share.
+# Projekter, fabrikken arbejder på. Boardets rækkefølge er prioriteten på tværs af dem.
+# Tænd og sluk et projekt med /factory enable|disable <projekt> eller kontakten i kontrolrummet.
 projects:
   ekvilibrium:
     repo: nikolajjepsen/ekvilibrium

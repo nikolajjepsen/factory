@@ -223,6 +223,61 @@ textarea:focus-visible {
 .project .meta.tone-accent {
   color: var(--accent);
 }
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.project-row .project {
+  flex: 1;
+  min-width: 0;
+}
+.project.off {
+  color: var(--dim);
+}
+.project.off .meta {
+  color: var(--faint);
+}
+/* The on/off switch: a 44px hit area around a small track. */
+.switch {
+  border: none;
+  background: transparent;
+  padding: 0 6px;
+  min-width: 44px;
+}
+.switch .track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--border-strong);
+  transition: background 0.15s;
+}
+.switch .knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition:
+    transform 0.15s,
+    background 0.15s;
+}
+.switch[aria-checked='true'] .track {
+  background: color-mix(in srgb, var(--ok) 35%, var(--panel));
+}
+.switch[aria-checked='true'] .knob {
+  transform: translateX(14px);
+  background: var(--ok);
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch .track,
+  .switch .knob {
+    transition: none;
+  }
+}
 
 .terminal {
   background: var(--panel-deep);

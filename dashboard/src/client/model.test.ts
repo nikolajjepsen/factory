@@ -96,7 +96,9 @@ describe('control room view model', () => {
   it('labels projects, queue entries and what waits for the owner', () => {
     const state = sampleState({ focus: 'ekvilibrium' });
     expect(projectMeta('loge-app', state)).toEqual({ text: 'aktiv', tone: 'ok' });
-    expect(projectMeta('ekvilibrium', state)).toEqual({ text: 'fokus', tone: 'accent' });
+    expect(projectMeta('ekvilibrium', state)).toEqual({ text: 'slukket', tone: 'neutral' });
+    const enabled = { ...state, projects: state.projects.map((p) => ({ ...p, enabled: true })) };
+    expect(projectMeta('ekvilibrium', enabled)).toEqual({ text: 'fokus', tone: 'accent' });
     expect(queueMeta(state.queue[0] ?? never())).toBe('klar');
     expect(queueMeta(state.queue[2] ?? never())).toBe('på hold · springes over');
     expect(waitingView(state.waitingForYou[0] ?? never())).toMatchObject({

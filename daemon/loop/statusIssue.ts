@@ -50,6 +50,8 @@ export function renderStatusIssue(state: FactoryState, timeZone?: string): strin
     );
   }
   if (state.focus) lines.push(`**Fokus:** ${state.focus}`);
+  const off = state.projects.filter((p) => !p.enabled).map((p) => p.name);
+  if (off.length > 0) lines.push(`**Slukket:** ${off.join(', ')}`);
   const { prs, merged, firstPass } = state.today;
   lines.push(
     `**I dag:** ${String(prs)} PR'er · ${String(merged)} merged${firstPass === null ? '' : ` · first-pass ${String(firstPass)} %`}`,
@@ -98,7 +100,7 @@ export function renderStatusIssue(state: FactoryState, timeZone?: string): strin
   lines.push(
     '',
     '---',
-    'Kommandoer (kun fra ejeren): `/factory pause | resume | status | halt | stop #N | retry #N [--runner x] | hold #N | release #N | up #N | focus <projekt>|off | workflow #N <navn> | reject #N "…" | approve #N | boost [3h|off]`',
+    'Kommandoer (kun fra ejeren): `/factory pause | resume | status | halt | stop #N | retry #N [--runner x] | hold #N | release #N | up #N | focus <projekt>|off | enable <projekt> | disable <projekt> | workflow #N <navn> | reject #N "…" | approve #N | boost [3h|off]`',
   );
   return lines.join('\n');
 }

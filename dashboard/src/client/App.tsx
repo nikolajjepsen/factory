@@ -141,18 +141,34 @@ function Projects({
       {state.projects.map((p) => {
         const meta = projectMeta(p.name, state);
         return (
-          <button
-            type="button"
-            key={p.name}
-            class={`project ${selected === p.name ? 'selected' : ''}`}
-            aria-pressed={selected === p.name}
-            onClick={() => {
-              select(p.name);
-            }}
-          >
-            <span>{p.name}</span>
-            <span class={`meta tone-${meta.tone}`}>{meta.text}</span>
-          </button>
+          <div class="project-row" key={p.name}>
+            <button
+              type="button"
+              class={`project ${selected === p.name ? 'selected' : ''} ${p.enabled ? '' : 'off'}`}
+              aria-pressed={selected === p.name}
+              onClick={() => {
+                select(p.name);
+              }}
+            >
+              <span>{p.name}</span>
+              <span class={`meta tone-${meta.tone}`}>{meta.text}</span>
+            </button>
+            <button
+              type="button"
+              role="switch"
+              class="switch"
+              aria-checked={p.enabled}
+              aria-label={`${p.enabled ? 'Sluk' : 'Tænd'} ${p.name}`}
+              title={p.enabled ? `Sluk ${p.name}` : `Tænd ${p.name}`}
+              onClick={() => {
+                run({ command: p.enabled ? 'disable' : 'enable', project: p.name });
+              }}
+            >
+              <span class="track">
+                <span class="knob" />
+              </span>
+            </button>
+          </div>
         );
       })}
       {state.focus ? (

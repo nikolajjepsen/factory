@@ -54,6 +54,18 @@ describe('parseChatOps', () => {
     ]);
   });
 
+  it('parses enable and disable, with the project taken from the repo when left out', () => {
+    expect(parse('/factory disable loge-app').commands).toEqual([
+      { command: 'disable', project: 'loge-app' },
+    ]);
+    expect(parse('/factory enable', { issue: 7, project: 'ekvilibrium' }).commands).toEqual([
+      { command: 'enable', project: 'ekvilibrium' },
+    ]);
+    expect(parse('/factory enable').errors).toEqual([
+      '"/factory enable": skriv projektet, fx loge-app.',
+    ]);
+  });
+
   it('parses boost with no duration, hours, minutes and off', () => {
     expect(parse('/factory boost').commands).toEqual([{ command: 'boost' }]);
     expect(parse('/factory boost 3h').commands).toEqual([{ command: 'boost', minutes: 180 }]);
@@ -77,7 +89,7 @@ describe('parseChatOps', () => {
     );
     expect(commands).toEqual([]);
     expect(errors).toEqual([
-      '"/factory dance": ukendt kommando "dance". Kendte: pause, resume, status, halt, stop, retry, hold, focus, workflow, reject, approve, boost, up, release.',
+      '"/factory dance": ukendt kommando "dance". Kendte: pause, resume, status, halt, stop, retry, hold, focus, workflow, reject, approve, boost, up, release, enable, disable.',
       '"/factory stop": /factory stop needs an issue, e.g. #12',
       '"/factory pause now": uventede ord: now.',
       '"/factory": mangler en kommando.',
@@ -115,6 +127,8 @@ describe('toChatOps', () => {
       { command: 'up', issue: 4, project: 'loge-app' },
       { command: 'focus', project: 'loge-app' },
       { command: 'focus' },
+      { command: 'enable', project: 'loge-app' },
+      { command: 'disable', project: 'loge-app' },
       { command: 'workflow', issue: 3, project: 'loge-app', workflow: 'bugfix' },
       { command: 'reject', issue: 3, project: 'loge-app', feedback: 'Brug Math.min' },
       { command: 'approve', issue: 3, project: 'loge-app' },

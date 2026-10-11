@@ -38,6 +38,9 @@ describe('ControlRoom', () => {
       'dagsbudget 14 % · brugt 6 %',
       'Boost til midnat',
       'Direkte · live',
+      'aria-label="Sluk loge-app"',
+      'aria-label="Tænd ekvilibrium"',
+      'slukket',
     ]) {
       expect(html).toContain(text);
     }

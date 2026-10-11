@@ -16,17 +16,30 @@ Når en kørsel er færdig, flyttes kortet til "In review", og PR'en får `facto
 
 ## Boardet
 
-`factory.yml` peger på boardet (`board.owner`, `board.number`) og oversætter Status-kolonnerne (`ready`, `in_progress`, `review`, `done`). GraphQL-API'et returnerer kortene i boardets manuelle rækkefølge. Den rækkefølge er prioriteten, og daemonen ændrer den aldrig.
+`factory.yml` peger på boardet (`board.owner`, `board.number`) og oversætter Status-kolonnerne (`ready`, `in_progress`, `review`, `done`). GraphQL-API'et returnerer kortene i boardets manuelle rækkefølge. Den rækkefølge er prioriteten, også på tværs af projekter, og daemonen ændrer den aldrig. Vil du have et projekt frem, flytter du dets kort op.
 
 Et kort i "Ready" springes over, hvis:
 
 - issuet er lukket, eller repoet ikke står i `projects.yml`,
+- projektet er slukket (se "Projekter"),
 - `focus` er sat til et andet projekt,
 - det har labelet `factory:hold` eller `factory:blocked`,
 - det har åbne sub-issues eller er "blocked by" et åbent issue,
 - fabrikken allerede har en kørsel for det.
 
 Grunden vises i køen i statusissuet.
+
+## Projekter
+
+`projects.yml` lister projekterne med `repo` og `path`. Hvert projekt kan slukkes med `/factory disable <projekt>` eller kontakten i kontrolrummet og tændes igen med `/factory enable <projekt>`. Indstillingen gemmes i daemonens database ligesom pause og fokus, så den overlever genstart.
+
+Et slukket projekt får ingen nye trin:
+
+- dets kort i "Ready" springes over med grunden "<projekt> er slukket",
+- dets igangværende kørsler bliver stående og fortsætter, når projektet tændes igen,
+- et trin, der kører, når du slukker, gøres færdigt.
+
+Daemonen går videre med kort fra de andre projekter. Statusissuet viser slukkede projekter under "Slukket".
 
 ## Tilstande
 
@@ -85,13 +98,15 @@ Kun kommentarer fra `owner_login` udføres. De læses fra statusissuets repo og 
 /factory release #N         frigiv et kort på hold
 /factory up #N              ryk kortet én plads op i Ready på boardet
 /factory focus <projekt>|off
+/factory enable <projekt>   tænd et projekt
+/factory disable <projekt>  sluk et projekt (ingen nye trin)
 /factory workflow #N <navn> brug et andet workflow fra næste start
 /factory reject #N "…"      fejlet gate med teksten som feedback
 /factory approve #N         godkend en human-gate
 /factory boost [3h|90m|off] tilsidesæt kvotereglerne (til midnat uden varighed)
 ```
 
-`#N` kan skrives som `#12`, `loge-app#12` eller `owner/repo#12`. På et projekts issue kan nummeret udelades.
+`#N` kan skrives som `#12`, `loge-app#12` eller `owner/repo#12`. På et projekts issue kan nummeret udelades, og `enable`/`disable` kan udelade projektet.
 
 Fabrikken kommenterer med ejerens eget gh-login. Derfor får alle dens kommentarer en skjult markør (`<!-- ai-factory -->`), og kommentarer med markøren udføres aldrig. Kun linjer, der starter med `/factory`, læses.
 

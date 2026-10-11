@@ -199,6 +199,8 @@ export function queueMeta(entry: QueueEntry): string {
 /** The meta text next to a project in the sidebar. */
 export function projectMeta(name: string, state: FactoryState): { text: string; tone: Tone } {
   if (state.current?.project === name) return { text: 'aktiv', tone: 'ok' };
+  if (state.projects.find((p) => p.name === name)?.enabled === false)
+    return { text: 'slukket', tone: 'neutral' };
   if (state.focus === name) return { text: 'fokus', tone: 'accent' };
   const queued = state.queue.filter((q) => q.project === name && !q.skip).length;
   return { text: queued > 0 ? `${String(queued)} i kø` : '', tone: 'neutral' };

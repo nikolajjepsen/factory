@@ -21,7 +21,7 @@ Denne plan er ordren til den agent, der bygger fabrikken (Codex eller Claude Cod
 | Container-runtime | OrbStack. Dashboardet nås på `https://dashboard.ai-factory.orb.local`. Docker Desktop understøttes som fallback |
 | Motor | Daemon, `codex app-server`, `gh` og worktrees kører **native** på macOS, aldrig i Docker (M9 undtaget) |
 | Arbejdstid | Døgnet rundt. Ingen kvote reserveres til Nikolaj |
-| Projekter | Projektagnostisk fra dag ét: `projects.yml` i fabrikken, `.factory/` i hvert projekt |
+| Projekter | Projektagnostisk fra dag ét: `projects.yml` i fabrikken, `.factory/` i hvert projekt. Boardets rækkefølge er prioriteten på tværs af projekter |
 | Workflows | Deklarative YAML-filer fortolket af en workflow-motor i daemonen. Ordforrådet er kode, kombinationen er konfiguration |
 | Første projekt | `loge-app` (toy-feature: medlemsliste med profilbillede) |
 
@@ -158,12 +158,13 @@ stages:
 
 ### M6 – Flere projekter og agent-lag
 
-- `projects.yml`: `focus`, og pr. projekt `repo`, `path`, `weight`, `quota_share`.
-- `<projekt>/.factory/project.yml`: CI-kommando, runners pr. rolle, `max_fix_iterations`.
-- Agentfiler (markdown + frontmatter): `extends`, `scope.labels`, `scope.paths`, `context`, `runner`. Opløsning: mest specifikke match på `area:`-label/sti → projektagent → `agents/baseline/<rolle>.md`.
-- Planlægning på tværs: vægtet round-robin, respekter `quota_share` og `focus`.
+- `projects.yml`: pr. projekt `repo` og `path`. Ingen vægte eller kvoteandele.
+- Tænd/sluk pr. projekt: `/factory enable|disable <projekt>` og en kontakt pr. projekt i kontrolrummet. Gemmes i daemonens database ligesom pause og fokus. Et slukket projekt får ingen nye trin.
+- `<projekt>/.factory/project.yml`: `ci` (tjek-kommandoen, agenten skal have grøn) og `runners` pr. rolle. Antallet af forsøg styres kun i workflow-filerne.
+- Agentfiler (markdown + frontmatter): `extends`, `scope.labels`, `context`, `runner`. Opløsning: mest specifikke match på `area:`-label → projektagent → `agents/baseline/<rolle>.md`.
+- Planlægning på tværs: boardets rækkefølge i "Klar" gælder på tværs af projekter. `focus` og tænd/sluk bestemmer, hvilke projekter der tages fra.
 
-**Accept:** To testprojekter kører side om side med korrekt fordeling. En domæneagent vælges for et issue med matchende `area:`-label, ellers baseline.
+**Accept:** To testprojekter kører side om side: køen følger boardets rækkefølge, `focus` og tænd/sluk. En domæneagent vælges for et issue med matchende `area:`-label, ellers baseline.
 
 ### M7 – Produktafdelingen
 

@@ -79,8 +79,8 @@ export const FactoryState = z.object({
   /** Until when `/factory boost` sets the quota rules aside. Codex' own limit still applies. */
   quotaOverrideUntil: z.iso.datetime().nullable(),
   focus: z.string().nullable(),
-  /** The projects in projects.yml. */
-  projects: z.array(z.object({ name: z.string(), repo: z.string() })),
+  /** The projects in projects.yml. A disabled project gets no new steps. */
+  projects: z.array(z.object({ name: z.string(), repo: z.string(), enabled: z.boolean() })),
   /** Runners this daemon can use, for "switch runner". */
   runners: z.array(z.string()),
   /** The emergency brake is on (`~/.ai-factory/HALT` or a `factory:halt` label). */

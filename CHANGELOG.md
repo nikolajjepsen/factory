@@ -4,6 +4,9 @@
 
 ### Tilføjet
 
+- M6: Tænd/sluk pr. projekt med `/factory enable <projekt>` og `/factory disable <projekt>` og en kontakt ved hvert projekt i kontrolrummet. Et slukket projekt får ingen nye trin, og daemonen går videre med de andre. Indstillingen gemmes i daemonens database. `projects` i tilstanden har `enabled`.
+- M6: Boardets rækkefølge i "Ready" er prioriteten på tværs af projekter. `weight` og `quota_share` fra den oprindelige plan udgår.
+
 - M5b: Kontrolrummet i `dashboard/` (Hono-server og Preact-UI bygget med esbuild) som container under OrbStack på `https://dashboard.ai-factory.orb.local`. Tema "Natskift": status og heartbeat, Pause/Genoptag, Nødstop, Skift runner, "Venter på dig", "Arbejder på nu" med workflowets trin, kø med op-knap og Hold, kvotemålere med dagsbudget og boost, dagens tal, log, projekter og fokus. Se `dashboard/README.md`.
 - M5b: `direct`-tilstand følger daemonens API live. `github`-tilstand læser "Factory Status"-issuet og sender kommandoer som `/factory`-kommentarer, uden adgang til daemonen.
 - M5b: `docker-compose.yml` (`name: ai-factory`, servicen `dashboard`, tokenet som secret, ingen porte) og profilen `docker-desktop` på `127.0.0.1:4711`.

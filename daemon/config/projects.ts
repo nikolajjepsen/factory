@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
-// M2 needs only repo and path. M6 adds focus, weight and quota_share.
+// A project is a repo and a local checkout. Focus and on/off are daemon settings, not config.
 
 const ProjectConfig = z.object({
   repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/, 'repo must look like owner/name'),

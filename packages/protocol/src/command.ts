@@ -18,6 +18,8 @@ export const COMMANDS = [
   'boost',
   'up',
   'release',
+  'enable',
+  'disable',
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];
 
@@ -36,7 +38,10 @@ export const Command = z
   .object({
     command: z.enum(COMMANDS),
     issue: z.number().int().positive().optional(),
-    /** A project name from projects.yml or an `owner/repo`. For `focus`, omit it to clear focus. */
+    /**
+     * A project name from projects.yml or an `owner/repo`. For `focus`, omit it to clear focus.
+     * `enable` and `disable` need it.
+     */
     project: z.string().min(1).optional(),
     runner: z.string().min(1).optional(),
     workflow: z.string().min(1).optional(),
@@ -50,6 +55,13 @@ export const Command = z
         code: 'custom',
         path: ['issue'],
         message: `/factory ${c.command} needs an issue, e.g. #12`,
+      });
+    }
+    if ((c.command === 'enable' || c.command === 'disable') && !c.project) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['project'],
+        message: `/factory ${c.command} needs a project, e.g. loge-app`,
       });
     }
     if (c.command === 'workflow' && !c.workflow) {
@@ -82,6 +94,9 @@ export function toChatOps(command: Command): string {
       return `/factory retry${ref}${command.runner ? ` --runner ${command.runner}` : ''}`;
     case 'focus':
       return `/factory focus ${command.project ?? 'off'}`;
+    case 'enable':
+    case 'disable':
+      return `/factory ${command.command} ${command.project ?? ''}`;
     case 'workflow':
       return `/factory workflow${ref} ${command.workflow ?? ''}`;
     case 'reject':

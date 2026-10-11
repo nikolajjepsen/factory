@@ -24,6 +24,7 @@ import type { AgentLibrary } from '../workflow/load.js';
 import type { RunState } from '../workflow/runState.js';
 import type { Workflow } from '../workflow/schema.js';
 import { stepsFor } from '../workflow/steps.js';
+import { z } from 'zod';
 import { HOLD_LABEL, pickNext } from './picker.js';
 import { prKey, prsOpenedToday, todayStats } from './today.js';
 import type { CurrentWork, DaemonMode, FactoryState, QueueEntry, WaitingEntry } from './state.js';
@@ -60,10 +61,12 @@ export type { CommandResult } from '@ai-factory/protocol';
 const SETTING = {
   paused: 'paused',
   focus: 'focus',
+  disabled: 'projects_disabled',
   commentsSince: 'comments_since',
   pacingDay: 'quota_pacing_day',
   boostUntil: 'quota_boost_until',
 } as const;
+const DisabledProjects = z.array(z.string());
 const LOG_LINES = 50;
 const PAUSED_REASON = 'Sat på pause med /factory pause.';
 /** How far back the first comment poll looks, so old commands are not replayed. */
@@ -136,10 +139,29 @@ export class Daemon {
     return this.#deps.store.getSetting(SETTING.focus) ?? null;
   }
 
+  /** Projects switched off with `/factory disable`. They get no new steps. */
+  get #disabled(): Set<string> {
+    const parsed = DisabledProjects.safeParse(
+      JSON.parse(this.#deps.store.getSetting(SETTING.disabled) ?? '[]'),
+    );
+    return new Set(parsed.success ? parsed.data : []);
+  }
+
+  #setEnabled(project: string, enabled: boolean): void {
+    const disabled = this.#disabled;
+    if (enabled) disabled.delete(project);
+    else disabled.add(project);
+    this.#deps.store.setSetting(
+      SETTING.disabled,
+      disabled.size > 0 ? JSON.stringify([...disabled].sort()) : undefined,
+    );
+  }
+
   state(): FactoryState {
     const { store, now } = this.#deps;
     const waiting: WaitingEntry[] = [];
     const recent = now().getTime() - DONE_VISIBLE_MS;
+    const disabled = this.#disabled;
     for (const run of store.listRuns(['waiting', 'blocked', 'done'])) {
       const url = run.pr?.url ?? this.#itemFor(run)?.url;
       const base = { project: run.project, issue: run.issue, ...(url && { url }) };
@@ -165,7 +187,11 @@ export class Daemon {
       quotaOverrideUntil: this.#boostUntil(),
       today: this.#today,
       focus: this.#focus,
-      projects: [...this.#repos].map(([name, repo]) => ({ name, repo })),
+      projects: [...this.#repos].map(([name, repo]) => ({
+        name,
+        repo,
+        enabled: !disabled.has(name),
+      })),
       runners: [...this.#deps.knownRunners],
       halted: this.#halted,
       current: this.#current,
@@ -232,10 +258,12 @@ export class Daemon {
     if (halt) return this.#pause(halt);
     if (this.#paused) return this.#pause(PAUSED_REASON);
 
+    // A disabled project's runs stay where they are until it is enabled again.
+    const disabled = this.#disabled;
     for (const run of store.listRuns(['waiting'])) {
-      await engine.advance(run);
+      if (!disabled.has(run.project)) await engine.advance(run);
     }
-    const active = store.listRuns(['active'])[0];
+    const active = store.listRuns(['active']).find((run) => !disabled.has(run.project));
     if (active) {
       if (await this.#waitForQuota()) return 'waiting';
       await this.#step(active);
@@ -249,6 +277,7 @@ export class Daemon {
       readyStatus: config.board.status.ready,
       projectsByRepo: new Map([...projects.values()].map((p) => [p.repo, p])),
       focus: this.#focus,
+      disabled,
       hasRun: (project, issue) => {
         const run = store.findLatestRun(project, issue);
         return run !== undefined && run.status !== 'stopped';
@@ -437,7 +466,23 @@ export class Daemon {
           }
           const project = await this.#resolveProject(command.project);
           store.setSetting(SETTING.focus, project.name);
-          return done(`Fokus på ${project.name}.`);
+          const off = this.#disabled.has(project.name)
+            ? ` ${project.name} er slukket, så intet køres, før du tænder det.`
+            : '';
+          return done(`Fokus på ${project.name}.${off}`, off !== '');
+        }
+        case 'enable': {
+          const project = await this.#resolveProject(command.project);
+          this.#setEnabled(project.name, true);
+          return done(`${project.name} er tændt.`);
+        }
+        case 'disable': {
+          const project = await this.#resolveProject(command.project);
+          this.#setEnabled(project.name, false);
+          const running = this.#current?.project === project.name;
+          return done(
+            `${project.name} er slukket og får ingen nye trin.${running ? ' Det aktuelle trin gøres færdigt.' : ''}`,
+          );
         }
         default:
           break;
@@ -555,6 +600,8 @@ export class Daemon {
     }[s.mode];
     const lines = [`**Tilstand:** ${mode}${s.reason ? ` (${s.reason})` : ''}`];
     if (s.focus) lines.push(`**Fokus:** ${s.focus}`);
+    const off = s.projects.filter((p) => !p.enabled).map((p) => p.name);
+    if (off.length > 0) lines.push(`**Slukket:** ${off.join(', ')}`);
     if (s.quotaOverrideUntil) {
       const until = formatResetTime(s.quotaOverrideUntil, {
         now: this.#deps.now(),

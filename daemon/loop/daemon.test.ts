@@ -122,10 +122,14 @@ async function harness(
     items?: BoardItem[];
     runner?: (inner: ScriptRunner) => Runner;
     quota?: QuotaSource;
+    /** Adds a second project, "other" (o/other). */
+    other?: boolean;
   } = {},
 ) {
   const dir = await mkdtemp(join(tmpdir(), 'ai-factory-daemon-'));
   const project: Project = { name: 'demo', repo: 'o/demo', path: dir };
+  const projects = new Map([[project.name, project]]);
+  if (options.other) projects.set('other', { name: 'other', repo: 'o/other', path: dir });
   const github = new FakeGitHub();
   github.checkRunSequence = [[checkRun()]];
   const board = new FakeBoard(options.items ?? [card(12)]);
@@ -144,7 +148,7 @@ async function harness(
     runners: new Map([['codex', runner]]),
     defaultRunner: 'codex',
     worktrees: { prepare: () => Promise.resolve(workspace) },
-    project: () => Promise.resolve(project),
+    project: (name) => Promise.resolve(projects.get(name) ?? project),
     library,
     ownerLogin: 'nikolajjepsen',
     ci: {
@@ -165,7 +169,7 @@ async function harness(
     board,
     store,
     engine,
-    projects: () => Promise.resolve(new Map([[project.name, project]])),
+    projects: () => Promise.resolve(projects),
     library,
     knownRunners: ['codex'],
     ...(options.quota && { quota: options.quota }),
@@ -566,10 +570,64 @@ describe('Daemon: dashboard controls', () => {
         { label: 'Review', state: 'pending' },
       ],
     });
-    expect(state.projects).toEqual([{ name: 'demo', repo: 'o/demo' }]);
+    expect(state.projects).toEqual([{ name: 'demo', repo: 'o/demo', enabled: true }]);
     expect(state.runners).toEqual(['codex']);
     await h.daemon.execute({ command: 'stop', issue: 12, project: 'demo' });
     await running;
+  });
+});
+
+describe('Daemon: several projects', () => {
+  it('takes cards across projects in board order and passes over a disabled project', async () => {
+    const h = await harness({
+      other: true,
+      items: [card(12), card(7, { repo: 'o/other', url: 'https://github.com/o/other/issues/7' })],
+    });
+    h.github.setIssue({ ...h.github.issue, number: 7 });
+    await h.daemon.execute({ command: 'disable', project: 'demo' });
+    expect(h.daemon.state().projects).toEqual([
+      { name: 'demo', repo: 'o/demo', enabled: false },
+      { name: 'other', repo: 'o/other', enabled: true },
+    ]);
+    await h.daemon.tick();
+    expect(h.board.moves[0]).toEqual({ itemId: 'item-7', status: 'In progress' });
+    expect(h.daemon.state().queue.map((q) => [q.project, q.issue, q.skip])).toEqual([
+      ['demo', 12, 'demo er slukket'],
+      ['other', 7, undefined],
+    ]);
+    expect(h.daemon.statusText()).toContain('**Slukket:** demo');
+  });
+
+  it('leaves the active run of a disabled project and goes on with the others', async () => {
+    const h = await harness({
+      other: true,
+      items: [card(12), card(7, { repo: 'o/other' })],
+    });
+    h.github.setIssue({ ...h.github.issue, number: 7 });
+    // A failed review keeps demo#12 active after its first step.
+    h.script.script({}, { output: { score: 3, passed: false, feedback: ['Mangler tests.'] } });
+    await h.daemon.tick();
+    expect(h.store.findLatestRun('demo', 12)?.status).toBe('active');
+    h.comment('/factory disable');
+    h.advance(1000); // run ids come from the clock
+    await h.daemon.tick();
+    expect(h.store.findLatestRun('demo', 12)?.status).toBe('active');
+    expect(h.store.findLatestRun('other', 7)).toBeDefined();
+    expect(h.lines.some((l) => l.includes('Kommando /factory disable: demo er slukket'))).toBe(
+      true,
+    );
+
+    await h.daemon.execute({ command: 'enable', project: 'demo' });
+    expect(h.daemon.state().projects.every((p) => p.enabled)).toBe(true);
+    await h.tickUntilIdle();
+    expect(h.store.findLatestRun('demo', 12)?.status).toBe('done');
+  });
+
+  it('refuses to switch an unknown project', async () => {
+    const h = await harness({ items: [] });
+    const result = await h.daemon.execute({ command: 'disable', project: 'nope' });
+    expect(result).toMatchObject({ reply: true });
+    expect(result.text).toContain('ukendt projekt "nope"');
   });
 });
 
