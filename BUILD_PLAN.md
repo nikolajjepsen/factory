@@ -145,6 +145,7 @@ stages:
 
 - Separat pakke `dashboard/` med egen `Dockerfile` (node:22-slim, non-root bruger) og `docker-compose.yml` i repo-roden med `name: ai-factory` og service-navnet `dashboard`, så OrbStack giver domænet `dashboard.ai-factory.orb.local`.
 - Dashboardet lytter på port 80 i containeren, så OrbStack-domænet virker uden portnummer. OrbStack sørger selv for HTTPS.
+- Tema "Natskift", **kun dark mode** (ingen light mode). Tokens, skrifttyper og layout står i `docs/mockups/README.md`.
 - Dashboard som i mockuppen: status-pill + heartbeat + næste start, knapper (Pause/Genoptag, Nødstop, Skift runner), "Arbejder på nu" med trin og iteration, to kvotemålere (5h og uge, pacing-budget), kø med op-knap og Hold, "Venter på dig", "I dag", log, projektvælger + fokus-knap.
 - To tilstande via `FACTORY_MODE`:
   - `direct` (default): `FACTORY_API_URL=http://host.orb.internal:4712` + `FACTORY_API_TOKEN`. Live via SSE. (`host.docker.internal` virker også og bruges på Docker Desktop.)

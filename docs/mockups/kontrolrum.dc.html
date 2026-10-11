@@ -2,174 +2,140 @@
 <html lang="da">
 <head>
 <meta charset="utf-8">
-<title>Fabrikkens kontrolrum</title>
+<title>Kontrolrum</title>
 <script src="./support.js"></script>
 </head>
 <body>
 <x-dc>
 <helmet>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
 <style>
-body{margin:0;background:#F1EFEA}
-a{color:#8A4A0B}a:hover{color:#5E3207}
+body{margin:0;background:#0A0E1A}
+a{color:#9DB7FF}a:hover{color:#C9D7FF}
 button{font-family:inherit}
-button:focus-visible{outline:2px solid #1B1D1F;outline-offset:2px}
+button:focus-visible{outline:2px solid #9DB7FF;outline-offset:2px}
 </style>
 </helmet>
-<div style="min-height: 100vh; background: #F1EFEA; color: #1B1D1F; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.45">
-<div style="max-width: 1240px; margin: 0 auto; padding: 32px 20px 56px; display: flex; flex-direction: column; gap: 20px">
+<div style="min-height: 100vh; background: #0A0E1A; color: #E4E8F5; font-family: 'Sora', sans-serif; font-size: 15px; line-height: 1.5">
+<div style="max-width: 1280px; margin: 0 auto; padding: 24px 20px 48px; display: flex; flex-wrap: wrap; gap: 24px">
 
-<header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<nav aria-label="Projekter" style="flex: 1 1 240px; max-width: 100%; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#9DB7FF" stroke-width="1.6" aria-hidden="true"><path d="M19 4a10 10 0 1 0 5 13A8 8 0 0 1 19 4z"></path></svg>
+<span style="font-weight: 700; font-size: 18px">Natskift</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8E99BC; letter-spacing: 0.08em">PROJEKTER</span>
+<sc-for list="{{projects}}" as="p" hint-placeholder-count="3">
+<button type="button" onClick="{{p.pick}}" style="{{p.style}}"><span>{{p.name}}</span><span style="{{p.metaStyle}}">{{p.meta}}</span></button>
+</sc-for>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 14px; background: #070A14; border: 1px solid #1E2742; font-family: 'JetBrains Mono', monospace">
+<span style="font-size: 12px; color: #8E99BC; letter-spacing: 0.08em">// KVOTE · CODEX PLUS</span>
 <div style="display: flex; flex-direction: column; gap: 4px">
-<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #5C5F63">Loge-app · AI-fabrik</div>
-<h1 style="margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.01em">Kontrolrummet</h1>
+<div style="display: flex; justify-content: space-between; font-size: 13px"><span>5h-vindue</span><span style="{{fiveTextStyle}}">{{fiveLeft}}% tilbage</span></div>
+<div style="font-size: 13px; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden" role="img" aria-label="5-timers-vindue: {{fiveLeft}} procent tilbage"><span style="{{fiveBlockStyle}}">{{fiveFilled}}</span><span style="color: #1E2742">{{fiveEmpty}}</span></div>
+<span style="font-size: 12px; color: #8E99BC">{{fiveReset}}</span>
 </div>
-<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
-<div style="{{pillStyle}}">
-<span style="{{dotStyle}}"></span>
-<span>{{statusLabel}}</span>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; justify-content: space-between; font-size: 13px"><span>uge</span><span style="color: #7FE3D0; font-weight: 700">71% tilbage</span></div>
+<div style="font-size: 13px; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden" role="img" aria-label="Uge: 71 procent tilbage"><span style="color: #7FE3D0">██████████████</span><span style="color: #1E2742">██████</span></div>
+<span style="font-size: 12px; color: #8E99BC">reset 18. okt 17:28</span>
+<span style="font-size: 12px; color: #8E99BC">dagsbudget 14% · brugt 6%</span>
 </div>
-<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5C5F63">heartbeat {{heartbeat}}</div>
-<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5C5F63">· {{nextLine}}</div>
+<button type="button" onClick="{{simulateQuota}}" style="min-height: 44px; border-radius: 10px; border: 1px dashed #2A3560; background: transparent; color: #8E99BC; font-size: 12px; cursor: pointer">simulér usage limit</button>
 </div>
-</header>
+</nav>
 
-<div style="display: flex; flex-wrap: wrap; gap: 10px; padding: 14px; background: #FFFFFF; border: 1px solid #D9D5CC; border-radius: 10px">
-<button type="button" onClick="{{togglePause}}" style="min-height: 44px; padding: 0 18px; border-radius: 8px; border: 1px solid #1B1D1F; background: #1B1D1F; color: #FFFFFF; font-size: 15px; font-weight: 600; cursor: pointer">{{pauseLabel}}</button>
-<button type="button" onClick="{{halt}}" style="min-height: 44px; padding: 0 18px; border-radius: 8px; border: 1px solid #A3231B; background: #FFFFFF; color: #A3231B; font-size: 15px; font-weight: 600; cursor: pointer">Nødstop (halt)</button>
-<button type="button" onClick="{{switchRunner}}" style="min-height: 44px; padding: 0 18px; border-radius: 8px; border: 1px solid #B9B4A9; background: #FFFFFF; color: #1B1D1F; font-size: 15px; font-weight: 500; cursor: pointer">Skift runner → {{otherRunner}}</button>
-<button type="button" onClick="{{simulateQuota}}" style="min-height: 44px; padding: 0 18px; border-radius: 8px; border: 1px solid #B9B4A9; background: #FFFFFF; color: #1B1D1F; font-size: 15px; font-weight: 500; cursor: pointer">Simulér kvote-stop</button>
-<div style="flex: 1 1 200px; display: flex; align-items: center; justify-content: flex-end; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5C5F63">Eksempeldata · knapperne svarer til /factory-kommandoer</div>
+<main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 28px; font-weight: 600">God aften, Nikolaj</span>
+<span style="color: #B7C0DD">{{subtitle}}</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+<span style="{{pillStyle}}"><span style="{{dotStyle}}"></span>{{statusLabel}} · hb 12s</span>
+<button type="button" onClick="{{togglePause}}" style="min-height: 44px; padding: 0 18px; border-radius: 12px; border: 1px solid #2A3560; background: #10162A; color: #E4E8F5; font-size: 14px; cursor: pointer">{{pauseLabel}}</button>
+<button type="button" onClick="{{switchRunner}}" style="min-height: 44px; padding: 0 18px; border-radius: 12px; border: 1px solid #2A3560; background: #10162A; color: #E4E8F5; font-size: 14px; cursor: pointer">Runner: {{runner}}</button>
+<button type="button" onClick="{{halt}}" style="min-height: 44px; padding: 0 18px; border-radius: 12px; border: 1px solid #F28B8B; background: transparent; color: #F7A8A8; font-size: 14px; font-weight: 600; cursor: pointer">Nødstop</button>
+</div>
 </div>
 
 <sc-if value="{{showBanner}}" hint-placeholder-val="{{ false }}">
-<div style="{{bannerStyle}}">
-<strong>{{bannerTitle}}</strong>
-<span>{{bannerText}}</span>
-</div>
+<div style="{{bannerStyle}}"><strong>{{bannerTitle}}</strong><span>{{bannerText}}</span></div>
 </sc-if>
 
-<div style="display: flex; flex-wrap: wrap; gap: 20px">
-
-<section style="flex: 2 1 560px; min-width: 0; background: #FFFFFF; border: 1px solid #D9D5CC; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 16px">
-<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline">
-<h2 style="margin: 0; font-size: 13px; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #5C5F63">Arbejder på nu</h2>
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5C5F63">iteration {{iteration}} / 3</span>
-</div>
-<div style="display: flex; flex-direction: column; gap: 4px">
-<div style="font-size: 22px; font-weight: 600">#22 Upload-pipeline: komprimering, thumbnails, EXIF</div>
-<div style="color: #4A4D51">Epic: Galleri · rolle: implementer · runner: <strong>{{runner}}</strong> · branch factory/22-upload-pipeline</div>
-</div>
-<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
-<sc-for list="{{steps}}" as="step" hint-placeholder-count="5">
-<div style="{{step.style}}">
-<div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase">{{step.state}}</div>
-<div style="font-weight: 600; font-size: 14px">{{step.label}}</div>
-</div>
-</sc-for>
-</div>
-</section>
-
-<section style="flex: 1 1 300px; min-width: 0; background: #FFFFFF; border: 1px solid #D9D5CC; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 14px">
-<h2 style="margin: 0; font-size: 13px; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #5C5F63">Kvote (Codex Plus)</h2>
-<div style="display: flex; flex-direction: column; gap: 6px">
-<div style="display: flex; justify-content: space-between; gap: 8px; font-size: 14px"><span style="font-weight: 600">5h-vindue</span><span style="font-family: 'IBM Plex Mono', monospace">{{fiveLeft}}% tilbage</span></div>
-<div style="height: 12px; background: #ECE8E0; border-radius: 6px; overflow: hidden" role="img" aria-label="5-timers-vindue tilbage">
-<div style="{{fiveBarStyle}}"></div>
-</div>
-<div style="color: #5C5F63; font-size: 13px">{{fiveText}}</div>
-</div>
-<div style="display: flex; flex-direction: column; gap: 6px">
-<div style="display: flex; justify-content: space-between; gap: 8px; font-size: 14px"><span style="font-weight: 600">Uge</span><span style="font-family: 'IBM Plex Mono', monospace">{{weekLeft}}% tilbage</span></div>
-<div style="height: 12px; background: #ECE8E0; border-radius: 6px; overflow: hidden" role="img" aria-label="Ugekvote tilbage">
-<div style="{{weekBarStyle}}"></div>
-</div>
-<div style="color: #5C5F63; font-size: 13px">reset 18. okt 17:28 · pacing: {{paceText}}</div>
-</div>
-<div style="color: #5C5F63; font-size: 12px; font-family: 'IBM Plex Mono', monospace">kilde: codex app-server · account/rateLimits/read</div>
-</section>
-
-</div>
-
-<div style="display: flex; flex-wrap: wrap; gap: 20px">
-
-<section style="flex: 2 1 560px; min-width: 0; background: #FFFFFF; border: 1px solid #D9D5CC; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 12px">
-<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline">
-<h2 style="margin: 0; font-size: 13px; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #5C5F63">Kø (rækkefølge = prioritet)</h2>
-<span style="font-size: 13px; color: #5C5F63">Synkroniseret med GitHub Project</span>
-</div>
-<sc-for list="{{queue}}" as="item" hint-placeholder-count="4">
-<div style="{{item.rowStyle}}">
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5C5F63; width: 28px">{{item.pos}}</span>
-<span style="{{item.prioStyle}}">{{item.prio}}</span>
-<div style="flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column">
-<span style="font-weight: 600">{{item.id}} {{item.title}}</span>
-<span style="font-size: 13px; color: #5C5F63">{{item.meta}}</span>
-</div>
-<div style="display: flex; gap: 8px">
-<button type="button" onClick="{{item.up}}" aria-label="Flyt op" style="min-width: 44px; min-height: 44px; border-radius: 8px; border: 1px solid #B9B4A9; background: #FFFFFF; cursor: pointer; display: flex; align-items: center; justify-content: center">
-<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#1B1D1F" stroke-width="1.75" aria-hidden="true"><path d="M3 10l5-5 5 5"></path></svg>
-</button>
-<button type="button" onClick="{{item.hold}}" style="min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid #B9B4A9; background: #FFFFFF; color: #1B1D1F; font-size: 14px; cursor: pointer">{{item.holdLabel}}</button>
-</div>
-</div>
-</sc-for>
-</section>
-
-<section style="flex: 1 1 300px; min-width: 0; background: #FFF7EC; border: 1px solid #E7C99C; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 12px">
-<h2 style="margin: 0; font-size: 13px; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #7A4309">Venter på dig ({{waitingCount}})</h2>
+<section style="display: flex; flex-direction: column; gap: 10px">
 <sc-for list="{{waiting}}" as="w" hint-placeholder-count="2">
-<div style="background: #FFFFFF; border: 1px solid #E7C99C; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px">
-<div style="display: flex; flex-direction: column">
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A4309">{{w.kind}}</span>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 14px; background: #1A1830; border: 1px solid #3A3466">
+<span style="width: 36px; height: 36px; border-radius: 10px; background: rgba(157,183,255,0.14); display: flex; align-items: center; justify-content: center; color: #9DB7FF; font-family: 'JetBrains Mono', monospace; font-size: 13px">{{w.icon}}</span>
+<div style="flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column">
 <span style="font-weight: 600">{{w.title}}</span>
+<span style="font-size: 13px; color: #B7C0DD">{{w.kind}}</span>
 </div>
-<button type="button" onClick="{{w.done}}" style="align-self: flex-start; min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid #8A4A0B; background: #8A4A0B; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">{{w.action}}</button>
+<button type="button" onClick="{{w.done}}" style="min-height: 44px; padding: 0 18px; border-radius: 12px; border: none; background: #9DB7FF; color: #0A0E1A; font-size: 14px; font-weight: 600; cursor: pointer">{{w.action}}</button>
 </div>
 </sc-for>
 <sc-if value="{{noWaiting}}" hint-placeholder-val="{{ false }}">
-<div style="color: #5C5F63">Intet venter. Fabrikken klarer sig selv.</div>
+<div style="padding: 14px 18px; border-radius: 14px; border: 1px dashed #2A3560; color: #8E99BC">Intet venter på dig. Fabrikken klarer sig selv.</div>
 </sc-if>
 </section>
 
+<section style="padding: 22px; border-radius: 16px; background: #10162A; border: 1px solid #1E2742; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8E99BC; letter-spacing: 0.08em">ARBEJDER PÅ NU</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8E99BC">feature.yml · {{runner}} · iteration {{iteration}}/3</span>
 </div>
-
-<div style="display: flex; flex-wrap: wrap; gap: 20px">
-
-<section style="flex: 1 1 300px; min-width: 0; background: #FFFFFF; border: 1px solid #D9D5CC; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 14px">
-<h2 style="margin: 0; font-size: 13px; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #5C5F63">I dag</h2>
-<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
-<div style="display: flex; flex-direction: column"><span style="font-size: 28px; font-weight: 700; font-family: 'IBM Plex Mono', monospace">4</span><span style="color: #5C5F63; font-size: 13px">PR'er åbnet</span></div>
-<div style="display: flex; flex-direction: column"><span style="font-size: 28px; font-weight: 700; font-family: 'IBM Plex Mono', monospace">2</span><span style="color: #5C5F63; font-size: 13px">merged</span></div>
-<div style="display: flex; flex-direction: column"><span style="font-size: 28px; font-weight: 700; font-family: 'IBM Plex Mono', monospace">1</span><span style="color: #5C5F63; font-size: 13px">rød CI fikset</span></div>
-<div style="display: flex; flex-direction: column"><span style="font-size: 28px; font-weight: 700; font-family: 'IBM Plex Mono', monospace">0</span><span style="color: #5C5F63; font-size: 13px">fejl</span></div>
-</div>
-<div style="border-top: 1px solid #ECE8E0; padding-top: 12px; display: flex; flex-direction: column; gap: 4px">
-<span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5C5F63; text-transform: uppercase; letter-spacing: 0.08em">Arbejdstid</span>
-<span style="font-size: 14px">Døgnet rundt · ingen reserveret kvote</span>
-<span style="font-size: 14px; color: #5C5F63">Stille notifikationer 23:00–07:00 · kanal: ntfy</span>
-</div>
-</section>
-
-<section style="flex: 2 1 560px; min-width: 0; background: #1B1D1F; color: #E9E6DF; border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 10px">
-<h2 style="margin: 0; font-size: 13px; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #A9A59C">Log</h2>
-<div style="display: flex; flex-direction: column; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; max-height: 260px; overflow-y: auto">
-<sc-for list="{{log}}" as="l" hint-placeholder-count="6">
-<div style="display: flex; gap: 14px">
-<span style="color: #A9A59C; flex: 0 0 auto">{{l.t}}</span>
-<span>{{l.text}}</span>
+<span style="font-size: 21px; font-weight: 600">#22 Upload-pipeline: komprimering, thumbnails, EXIF</span>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+<div style="{{s.bar}}"></div>
+<span style="{{s.labelStyle}}">{{s.label}}</span>
 </div>
 </sc-for>
 </div>
 </section>
 
+<div style="display: flex; flex-wrap: wrap; gap: 20px">
+<section style="flex: 1 1 380px; min-width: 0; padding: 22px; border-radius: 16px; background: #10162A; border: 1px solid #1E2742; display: flex; flex-direction: column; gap: 2px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8E99BC; letter-spacing: 0.08em; padding-bottom: 8px">NÆSTE I KØEN</span>
+<sc-for list="{{queue}}" as="q" hint-placeholder-count="4">
+<div style="{{q.rowStyle}}">
+<span style="{{q.dot}}"></span>
+<div style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column">
+<span>{{q.id}} {{q.title}}</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #8E99BC">{{q.meta}}</span>
+</div>
+<div style="display: flex; gap: 6px">
+<button type="button" onClick="{{q.up}}" aria-label="Flyt op" style="min-width: 44px; min-height: 44px; border-radius: 10px; border: 1px solid #2A3560; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#B7C0DD" stroke-width="1.75" aria-hidden="true"><path d="M3 10l5-5 5 5"></path></svg></button>
+<button type="button" onClick="{{q.hold}}" style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #2A3560; background: transparent; color: #B7C0DD; font-size: 13px; cursor: pointer">{{q.holdLabel}}</button>
+</div>
+</div>
+</sc-for>
+</section>
+
+<section style="flex: 1.2 1 420px; min-width: 0; padding: 20px; border-radius: 16px; background: #070A14; border: 1px solid #1E2742; display: flex; flex-direction: column; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 13px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding-bottom: 6px">
+<span style="font-size: 12px; color: #8E99BC; letter-spacing: 0.08em">// LOG</span>
+<span style="font-size: 12px; color: #6B7699">4 PR'er · 2 merged · first-pass 71%</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto">
+<sc-for list="{{log}}" as="l" hint-placeholder-count="6">
+<div style="display: flex; gap: 14px"><span style="color: #4E5878; flex: 0 0 auto">{{l.t}}</span><span style="{{l.style}}">{{l.text}}</span></div>
+</sc-for>
+</div>
+</section>
 </div>
 
+</main>
 </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1180}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1120}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
@@ -177,23 +143,25 @@ class Component extends DCLogic {
       mode: 'running',
       runner: 'codex',
       iteration: 2,
-      quotaPct: 61,
+      fiveLeft: 39,
+      project: 'loge-app',
       queue: [
-        { id: '#23', title: 'Datamodel: album ↔ begivenhed', prio: 'P1', meta: 'klar · codex', held: false },
-        { id: '#24', title: 'Galleri-visning (grid + lightbox)', prio: 'P1', meta: 'blokeret af #22, #23', held: false },
-        { id: '#25', title: 'Tidslinje-integration', prio: 'P2', meta: 'blokeret af #24', held: false },
-        { id: '#26', title: 'Slet/rettigheder + e2e-tests', prio: 'P2', meta: 'klar · codex', held: false }
+        { id: '#23', title: 'Datamodel: album ↔ begivenhed', meta: 'P1 · klar', ready: true, held: false },
+        { id: '#24', title: 'Galleri-visning', meta: 'P1 · venter på #22, #23', ready: false, held: false },
+        { id: '#25', title: 'Tidslinje-integration', meta: 'P2 · venter på #24', ready: false, held: false },
+        { id: '#26', title: 'Slet/rettigheder + e2e', meta: 'P2 · klar', ready: true, held: false }
       ],
       waiting: [
-        { key: 'b19', kind: 'Decision Brief · 4 spørgsmål', title: '#19 Begivenheder: deltagerliste og info', action: 'Åbn brief' },
-        { key: 'p21', kind: 'PR klar til merge · CI grøn · review godkendt', title: '#21 StorageProvider + Supabase-adapter', action: 'Merge' }
+        { key: 'b19', icon: '?', title: '#19 Begivenheder: deltagerliste og info', kind: 'Decision Brief med 4 spørgsmål · kritik 8/10', action: 'Besvar' },
+        { key: 'p21', icon: '✓', title: '#21 StorageProvider + Supabase-adapter', kind: 'CI grøn · review 8/10', action: 'Merge' }
       ],
       log: [
-        { t: '21:42', text: '#22 implementer: iteration 2 startet (CI fejlede på EXIF-test)' },
-        { t: '21:31', text: '#22 CI rød: 1 test fejlede, sendt tilbage' },
-        { t: '21:05', text: '#21 reviewer: godkendt' },
-        { t: '20:48', text: '#19 analyst: Decision Brief postet, venter på Nikolaj' },
-        { t: '18:00', text: 'Daemon vågnede (arbejdstid start)' }
+        { t: '21:42', text: '#22 implementer: iteration 2 (CI fejlede på EXIF-test)', k: 'n' },
+        { t: '21:31', text: '#22 gate ci: rød · 1 test fejlede', k: 'w' },
+        { t: '21:05', text: '#21 gate review: 8/10 · godkendt', k: 'g' },
+        { t: '20:48', text: '#19 analyst: Decision Brief postet → venter på dig', k: 'w' },
+        { t: '20:40', text: '#19 gate review: 4/10 → retry_with_feedback', k: 'w' },
+        { t: '18:00', text: 'kvote læst: 5h 100% · uge 77%', k: 'n' }
       ]
     };
   }
@@ -201,94 +169,113 @@ class Component extends DCLogic {
     const d = new Date();
     return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
-  addLog(text, extra) {
-    this.setState({ ...(extra || {}), log: [{ t: this.now(), text }].concat(this.state.log).slice(0, 30) });
+  addLog(text, k, extra) {
+    this.setState({ ...(extra || {}), log: [{ t: this.now(), text, k }].concat(this.state.log).slice(0, 40) });
   }
   renderVals() {
     const s = this.state;
     const modes = {
-      running: { label: 'Kører', fg: '#1F6B3F', bg: '#E3F1E8', dot: '#2E8B57', next: 'kører døgnet rundt' },
-      paused: { label: 'Pauset', fg: '#6B5310', bg: '#F6EDD2', dot: '#B08A1E', next: 'venter på /factory resume' },
-      halted: { label: 'Nødstop', fg: '#8E1D16', bg: '#F8E1DF', dot: '#C0352B', next: 'fjern factory:halt for at fortsætte' },
-      waiting_quota: { label: 'Venter på kvote', fg: '#7A4309', bg: '#FBE9D3', dot: '#C46A12', next: 'genstarter kl. 14:30' }
+      running: { label: 'Kører', fg: '#7FE3D0', bg: 'rgba(127,227,208,0.12)', sub: s.waiting.length ? 'Fabrikken kører stille og roligt. ' + s.waiting.length + ' ting venter på dig.' : 'Fabrikken kører stille og roligt.' },
+      paused: { label: 'Pauset', fg: '#F5B971', bg: 'rgba(245,185,113,0.12)', sub: 'Fabrikken holder pause efter nuværende trin.' },
+      halted: { label: 'Nødstop', fg: '#F7A8A8', bg: 'rgba(242,139,139,0.14)', sub: 'Alt er stoppet. Arbejdet er gemt på branchen.' },
+      waiting_quota: { label: 'Venter på kvote', fg: '#F5B971', bg: 'rgba(245,185,113,0.12)', sub: 'Kvoten er brugt. Fabrikken sover til 22:28.' }
     };
     const m = modes[s.mode];
-    const active = s.mode === 'running';
-    const stepDefs = [
-      { label: 'Plan', st: 'done' },
-      { label: 'Kode', st: 'active' },
-      { label: 'CI', st: 'todo' },
-      { label: 'Review', st: 'todo' },
-      { label: 'Docs', st: 'todo' }
+    const running = s.mode === 'running';
+    const banners = {
+      paused: ['Pauset.', 'Ingen nye trin startes, før du genoptager.', '#2A2416', '#5C4A26', '#F5D7A8'],
+      halted: ['Nødstop aktivt.', 'Label factory:halt er sat på repoet. Fjern den eller tryk Genoptag.', '#2A1620', '#6B2E3E', '#F7C4C4'],
+      waiting_quota: ['Usage limit nået.', 'Codex nulstiller 5h-vinduet kl. 22:28. Daemonen fortsætter selv med #22.', '#2A2416', '#5C4A26', '#F5D7A8']
+    };
+    const b = banners[s.mode] || ['', '', '', '', ''];
+
+    const bar = 'height: 6px; border-radius: 3px; ';
+    const act = running ? '#9DB7FF' : '#F5B971';
+    const steps = [
+      { label: 'Plan · 8/10', bar: bar + 'background: #7FE3D0', labelStyle: 'font-size: 13px; color: #7FE3D0' },
+      { label: running ? 'Kode' : 'Kode · stoppet', bar: bar + 'background: linear-gradient(90deg, ' + act + ' 55%, #1E2742 55%)', labelStyle: 'font-size: 13px; font-weight: 600; color: ' + (running ? '#E4E8F5' : '#F5B971') },
+      { label: 'CI', bar: bar + 'background: #1E2742', labelStyle: 'font-size: 13px; color: #8E99BC' },
+      { label: 'Review', bar: bar + 'background: #1E2742', labelStyle: 'font-size: 13px; color: #8E99BC' },
+      { label: 'Docs', bar: bar + 'background: #1E2742', labelStyle: 'font-size: 13px; color: #8E99BC' }
     ];
-    const base = 'border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; ';
-    const steps = stepDefs.map((d) => {
-      if (d.st === 'done') return { label: d.label, state: 'færdig', style: base + 'background: #E3F1E8; color: #1F6B3F; border: 1px solid #B9DCC6' };
-      if (d.st === 'active') return { label: d.label, state: active ? 'i gang' : 'stoppet', style: base + (active ? 'background: #1B1D1F; color: #FFFFFF; border: 1px solid #1B1D1F' : 'background: #F6EDD2; color: #6B5310; border: 1px solid #E2CF8F') };
-      return { label: d.label, state: 'venter', style: base + 'background: #F7F5F0; color: #5C5F63; border: 1px solid #E4E0D7' };
+
+    const blocks = Math.round(s.fiveLeft / 5);
+    const fiveColor = s.fiveLeft < 15 ? '#F28B8B' : s.fiveLeft < 50 ? '#F5B971' : '#7FE3D0';
+
+    const projDefs = [
+      { name: 'loge-app', meta: 'aktiv' },
+      { name: 'ai-factory', meta: '3 i kø' },
+      { name: 'ekvilibrium', meta: 'pause' }
+    ];
+    const projects = projDefs.map((p) => {
+      const sel = p.name === s.project;
+      return {
+        ...p,
+        style: 'display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 10px; border: none; font-size: 15px; text-align: left; cursor: pointer; ' + (sel ? 'background: #172042; color: #E4E8F5' : 'background: transparent; color: #B7C0DD'),
+        metaStyle: "font-family: 'JetBrains Mono', monospace; font-size: 12px; color: " + (p.meta === 'aktiv' ? '#7FE3D0' : '#8E99BC'),
+        pick: () => this.setState({ project: p.name })
+      };
     });
+
+    const d = 'width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; ';
     const queue = s.queue.map((q, i) => ({
       ...q,
-      pos: String(i + 1),
-      holdLabel: q.held ? 'Frigiv' : 'Hold',
       meta: q.held ? 'på hold · springes over' : q.meta,
-      rowStyle: 'display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #E4E0D7; border-radius: 8px; ' + (q.held ? 'background: #F7F5F0; opacity: 0.75' : 'background: #FFFFFF'),
-      prioStyle: 'font-family: \'IBM Plex Mono\', monospace; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px; ' + (q.prio === 'P1' ? 'background: #1B1D1F; color: #FFFFFF' : 'background: #ECE8E0; color: #1B1D1F'),
+      holdLabel: q.held ? 'Frigiv' : 'Hold',
+      dot: d + (q.held ? 'border: 1.5px dashed #6B7699' : q.ready ? 'background: #7FE3D0' : 'border: 1.5px solid #6B7699'),
+      rowStyle: 'display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid #1A2140; ' + (q.held ? 'opacity: 0.6' : ''),
       up: () => {
         if (i === 0) return;
         const next = s.queue.slice();
         const tmp = next[i - 1]; next[i - 1] = next[i]; next[i] = tmp;
-        this.addLog('Prioritet: ' + q.id + ' flyttet op til plads ' + i, { queue: next });
+        this.addLog('prioritet: ' + q.id + ' → plads ' + i, 'n', { queue: next });
       },
       hold: () => {
         const next = s.queue.map((x, j) => (j === i ? { ...x, held: !x.held } : x));
-        this.addLog((q.held ? '/factory resume ' : '/factory hold ') + q.id, { queue: next });
+        this.addLog((q.held ? '/factory resume ' : '/factory hold ') + q.id, 'n', { queue: next });
       }
     }));
+
     const waiting = s.waiting.map((w) => ({
       ...w,
-      done: () => this.addLog(w.action === 'Merge' ? w.title.split(' ')[0] + ' merged af Nikolaj' : w.title.split(' ')[0] + ' brief besvaret, spec-agent startet', { waiting: s.waiting.filter((x) => x.key !== w.key) })
+      done: () => {
+        const id = w.title.split(' ')[0];
+        this.addLog(w.action === 'Merge' ? id + ' merged af Nikolaj' : id + ' brief besvaret → spec-agent startet', 'g', { waiting: s.waiting.filter((x) => x.key !== w.key) });
+      }
     }));
-    const quotaColor = s.quotaPct >= 85 ? '#C46A12' : s.quotaPct >= 60 ? '#B08A1E' : '#2E8B57';
-    let bannerTitle = '', bannerText = '', bannerColor = '';
-    if (s.mode === 'waiting_quota') { bannerTitle = 'Kvote opbrugt.'; bannerText = 'Codex meldte usage limit. Daemonen genstarter selv kl. 14:30 og samler #22 op, hvor den slap.'; bannerColor = 'background: #FBE9D3; border: 1px solid #E7C99C; color: #5E3207'; }
-    if (s.mode === 'halted') { bannerTitle = 'Nødstop aktivt.'; bannerText = 'Label factory:halt er sat. Intet kører, arbejdet på factory/22-upload-pipeline er gemt.'; bannerColor = 'background: #F8E1DF; border: 1px solid #E8B4AF; color: #6E140F'; }
-    if (s.mode === 'paused') { bannerTitle = 'Pauset efter nuværende trin.'; bannerText = 'Ingen nye trin startes, før du genoptager.'; bannerColor = 'background: #F6EDD2; border: 1px solid #E2CF8F; color: #4F3D0B'; }
+
+    const logColors = { n: '#C9D0E6', w: '#F5B971', g: '#7FE3D0', c: '#F28B8B' };
+    const log = s.log.map((l) => ({ ...l, style: 'color: ' + logColors[l.k] }));
+
     return {
-      statusLabel: m.label,
-      pillStyle: 'display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 14px; background: ' + m.bg + '; color: ' + m.fg,
-      dotStyle: 'width: 10px; height: 10px; border-radius: 50%; background: ' + m.dot,
-      heartbeat: '12s',
-      nextLine: m.next,
-      pauseLabel: s.mode === 'running' ? 'Pause' : 'Genoptag',
-      otherRunner: s.runner === 'codex' ? 'claude' : 'codex',
+      projects, steps, queue, waiting, log,
+      noWaiting: s.waiting.length === 0,
       runner: s.runner,
       iteration: s.iteration,
-      steps,
-      queue,
-      waiting,
-      waitingCount: s.waiting.length,
-      noWaiting: s.waiting.length === 0,
-      fiveLeft: Math.max(0, 100 - s.quotaPct),
-      fiveBarStyle: 'height: 100%; width: ' + Math.max(0, 100 - s.quotaPct) + '%; background: ' + quotaColor,
-      fiveText: s.quotaPct >= 100 ? 'under 15 %: pause · reset 14:30' : 'reset 22:28 · pause under 15 %',
-      weekLeft: 71,
-      weekBarStyle: 'height: 100%; width: 71%; background: #2E8B57',
-      paceText: 'dagsbudget 14 %, brugt 6 %',
-      showBanner: s.mode !== 'running',
-      bannerTitle, bannerText,
-      bannerStyle: 'display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 18px; border-radius: 10px; ' + bannerColor,
-      log: s.log,
+      subtitle: m.sub,
+      statusLabel: m.label,
+      pillStyle: 'display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 14px; color: ' + m.fg + '; background: ' + m.bg,
+      dotStyle: 'width: 8px; height: 8px; border-radius: 50%; background: ' + m.fg,
+      pauseLabel: running ? 'Pause' : 'Genoptag',
+      showBanner: !running,
+      bannerTitle: b[0], bannerText: b[1],
+      bannerStyle: 'display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 18px; border-radius: 14px; background: ' + b[2] + '; border: 1px solid ' + b[3] + '; color: ' + b[4],
+      fiveLeft: s.fiveLeft,
+      fiveFilled: '█'.repeat(blocks),
+      fiveEmpty: '█'.repeat(20 - blocks),
+      fiveBlockStyle: 'color: ' + fiveColor,
+      fiveTextStyle: 'font-weight: 700; color: ' + fiveColor,
+      fiveReset: s.fiveLeft < 15 ? 'under 15% → pause · reset 22:28' : 'reset 22:28 · pause under 15%',
       togglePause: () => {
-        if (s.mode === 'running') this.addLog('/factory pause (efter nuværende trin)', { mode: 'paused' });
-        else this.addLog(s.mode === 'halted' ? 'factory:halt fjernet, /factory resume' : '/factory resume', { mode: 'running', quotaPct: s.mode === 'waiting_quota' ? 4 : s.quotaPct });
+        if (running) this.addLog('/factory pause (efter nuværende trin)', 'w', { mode: 'paused' });
+        else this.addLog(s.mode === 'halted' ? 'factory:halt fjernet · /factory resume' : '/factory resume', 'g', { mode: 'running', fiveLeft: s.mode === 'waiting_quota' ? 100 : s.fiveLeft });
       },
-      halt: () => this.addLog('NØDSTOP: label factory:halt sat på repoet', { mode: 'halted' }),
+      halt: () => this.addLog('NØDSTOP: label factory:halt sat', 'c', { mode: 'halted' }),
       switchRunner: () => {
         const r = s.runner === 'codex' ? 'claude' : 'codex';
-        this.addLog('/factory retry #22 --runner ' + r, { runner: r, iteration: 1 });
+        this.addLog('/factory retry #22 --runner ' + r, 'n', { runner: r, iteration: 1 });
       },
-      simulateQuota: () => this.addLog('Codex: usage limit nået, venter til 14:30', { mode: 'waiting_quota', quotaPct: 100 })
+      simulateQuota: () => this.addLog('codex: usage limit · 5h 4% tilbage · venter til 22:28', 'w', { mode: 'waiting_quota', fiveLeft: 4 })
     };
   }
 }
