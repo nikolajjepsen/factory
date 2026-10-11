@@ -7,6 +7,8 @@ const state: FactoryState = {
   mode: 'running',
   heartbeat: '2026-10-11T18:00:00.000Z',
   nextStart: null,
+  quota: null,
+  quotaOverrideUntil: null,
   focus: 'ekvilibrium',
   current: {
     project: 'ekvilibrium',
@@ -63,6 +65,33 @@ describe('renderStatusIssue', () => {
     expect(body).toContain('_Intet lige nu._');
     expect(body).toContain('_Tom._');
     expect(body).not.toContain('Seneste log');
+  });
+
+  it('shows the quota, the pacing budget and when work resumes while waiting for quota', () => {
+    const body = renderStatusIssue(
+      {
+        ...state,
+        mode: 'waiting_quota',
+        reason: 'Dagens budget på 15 % af ugekvoten er brugt.',
+        nextStart: '2026-10-11T22:00:00.000Z',
+        quota: {
+          snapshot: {
+            fiveHour: { usedPercent: 38, resetsAt: '2026-10-11T20:30:00.000Z' },
+            weekly: { usedPercent: 55, resetsAt: '2026-10-15T22:00:00.000Z' },
+            fetchedAt: '2026-10-11T18:00:00.000Z',
+          },
+          pacing: { day: '2026-10-11', budget: 15, usedToday: 15.5 },
+        },
+      },
+      'Europe/Copenhagen',
+    );
+    expect(body).toContain(
+      '**Tilstand:** Venter på kvote – Dagens budget på 15 % af ugekvoten er brugt.',
+    );
+    expect(body).toContain('**Næste start:** 2026-10-12 00:00:00');
+    expect(body).toContain(
+      '**Kvote:** 62 % tilbage af 5-timersvinduet, 45 % af ugen. Dagens budget: 15,5 % brugt af 15 %.',
+    );
   });
 
   it('returns undefined for a body without state', () => {

@@ -5,6 +5,7 @@ En runner udfører én agent-turn. Kernen kender kun interfacet i `daemon/runner
 ## Kontrakten
 
 - `Runner.run(task): AsyncIterable<RunEvent>`. Den sidste hændelse er altid `report` med en `RunReport`: `status` (`success | failed | interrupted`), `summary`, `testsRun`, `branch`, `commits` og evt. `tokens`.
+- `quotaExhausted: true` på en fejlet `RunReport` betyder, at leverandørens kvote slap op. Motoren kaster så `QuotaExhaustedError` i stedet for at bruge stigen, og daemonen venter på kvoten (se `docs/daemon.md`).
 - `RunTask` indeholder den færdige prompt, et `Workspace` (git worktree) og et valgfrit `AbortSignal`. Afbrydes signalet, stopper runneren turnen.
 - Agenten afleverer sin slutrapport som JSON efter skemaet `AgentReport`: `status` (`done | blocked`), `summary` (dansk), `testsRun` og `commitMessage`. Codex håndhæver skemaet via `outputSchema` på `turn/start`.
 
@@ -20,6 +21,7 @@ Efter hver turn kalder runneren `finishRun` (`daemon/runner/finishRun.ts`), som 
 | Agenten svarer `blocked` | `WIP: <projekt>#<issue> (blocked)` | `failed` |
 | Afbrudt (Ctrl-C, `/factory stop`) | `WIP: <projekt>#<issue> (interrupted)` | `interrupted` |
 | Turnen fejler, timeout, ugyldig rapport eller app-server-nedbrud | `WIP: <projekt>#<issue> (failed)` | `failed` |
+| Kvoten slipper op ("usage limit") | `WIP: <projekt>#<issue> (quota)` | `failed` med `quotaExhausted` |
 
 Er der intet ændret, laves ingen commit.
 

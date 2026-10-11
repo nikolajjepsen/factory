@@ -13,6 +13,12 @@ import type { AppServerClient, LogLevel } from './appServerClient.js';
 
 // Shapes below are checked against test/fixtures/codex/turn-*.jsonl (codex-cli 0.162.1).
 
+/**
+ * `TurnError` from the protocol (`codex app-server generate-ts`, codex-cli 0.162.1).
+ * `codexErrorInfo` is a string code such as "usageLimitExceeded", or an object for some codes.
+ */
+const TurnError = z.looseObject({ message: z.string(), codexErrorInfo: z.unknown().nullish() });
+
 const ThreadStartResponse = z.looseObject({ thread: z.looseObject({ id: z.string() }) });
 const TurnStartResponse = z.looseObject({ turn: z.looseObject({ id: z.string() }) });
 
@@ -21,7 +27,7 @@ const TurnCompletedParams = z.looseObject({
   turn: z.looseObject({
     id: z.string(),
     status: z.enum(['completed', 'interrupted', 'failed', 'inProgress']),
-    error: z.looseObject({ message: z.string() }).nullish(),
+    error: TurnError.nullish(),
   }),
 });
 
@@ -45,7 +51,7 @@ const ItemCompletedParams = z.looseObject({ threadId: z.string(), item: z.unknow
 const ErrorParams = z.looseObject({
   threadId: z.string(),
   willRetry: z.boolean(),
-  error: z.looseObject({ message: z.string() }),
+  error: TurnError,
 });
 
 const TokenUsageParams = z.looseObject({
@@ -75,6 +81,11 @@ export interface CodexRunnerOptions {
   /** A turn running longer than this is interrupted and reported as failed. */
   turnTimeoutMs?: number;
   log?: (level: LogLevel, message: string) => void;
+}
+
+/** The plan's usage limit, not a transient rate limit: waiting for the reset is the only cure. */
+export function isUsageLimit(error: z.infer<typeof TurnError>): boolean {
+  return error.codexErrorInfo === 'usageLimitExceeded' || /usage limit/i.test(error.message);
 }
 
 type TurnEnd =
@@ -114,7 +125,10 @@ export class CodexRunner implements Runner {
   async #execute(task: RunTask, events: EventQueue<RunEvent>): Promise<TurnOutcome> {
     const cleanups: (() => void)[] = [];
     // Held in an object: TypeScript does not see assignments made inside callbacks.
-    const turnState: { tokens?: TokenUsage; timedOut: boolean } = { timedOut: false };
+    const turnState: { tokens?: TokenUsage; timedOut: boolean; usageLimit: boolean } = {
+      timedOut: false,
+      usageLimit: false,
+    };
     const withTokens = <T extends TurnOutcome>(o: T): T =>
       turnState.tokens ? { ...o, tokens: turnState.tokens } : o;
     try {
@@ -145,6 +159,7 @@ export class CodexRunner implements Runner {
           if (!parsed.success || parsed.data.threadId !== threadId) return;
           const { status, error } = parsed.data.turn;
           if (status === 'inProgress') return;
+          if (error && isUsageLimit(error)) turnState.usageLimit = true;
           resolve({ kind: status, ...(error && { error: error.message }) });
         });
         on('item/completed', (params) => {
@@ -175,6 +190,7 @@ export class CodexRunner implements Runner {
           const parsed = ErrorParams.safeParse(params);
           if (!parsed.success || parsed.data.threadId !== threadId) return;
           if (!parsed.data.willRetry) lastError = parsed.data.error.message;
+          if (isUsageLimit(parsed.data.error)) turnState.usageLimit = true;
           events.push({ type: 'error', message: parsed.data.error.message });
         });
         on('thread/tokenUsage/updated', (params) => {
@@ -247,6 +263,7 @@ export class CodexRunner implements Runner {
           return withTokens({
             kind: 'failed',
             error: `Codex-turnen fejlede: ${end.error ?? lastError ?? 'ukendt fejl'}`,
+            ...(turnState.usageLimit && { quotaExhausted: true as const }),
           });
         default:
           return withTokens(parseFinalAnswer(finalAnswer, schema));

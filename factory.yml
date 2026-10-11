@@ -1,4 +1,4 @@
-# Fabrikkens egen konfiguration. M4 tilføjer kvoteregler, M5a API-porten.
+# Fabrikkens egen konfiguration. M5a tilføjer API-porten.
 
 # GitHub Project-boardet, fabrikken henter arbejde fra. Rækkefølgen i "ready" er prioriteten.
 board:
@@ -23,3 +23,12 @@ default_runner: codex
 limits:
   # Hvor længe CI-gaten venter på, at tjek bliver færdige.
   ci_timeout_minutes: 30
+
+# Kvotepolitikken. Daemonen læser Codex-kvoten før hvert trin og hvert 5. minut, mens den venter.
+quota:
+  # Hold pause, når der er under denne andel tilbage af 5-timersvinduet.
+  pause_below_5h: 15%
+  # Den del af ugekvoten, fabrikken aldrig rører, så du selv kan bruge Codex.
+  reserve_for_me: 0%
+  # even: fordel ugekvoten jævnt over dagene til nulstilling. none: brug den, så længe den rækker.
+  pacing: even

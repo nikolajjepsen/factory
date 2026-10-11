@@ -4,6 +4,11 @@
 
 ### Tilføjet
 
+- M4: Kvotepolitik. Daemonen læser Codex-kvoten før hvert trin og hvert 5. minut, mens den venter, og går i `waiting_quota` med `nextStart`, når 5-timersvinduet er under `pause_below_5h`, ugekvoten er nede på `reserve_for_me`, eller dagens pacing-budget er brugt. En kørende turn får lov at blive færdig. Se `docs/daemon.md`.
+- M4: Pacing `even` fordeler ugekvoten jævnt over tiden til nulstilling. En dag, der starter midt i døgnet, får kun andelen af sine resterende timer. Budgettet fastsættes ved dagens start og gemmes.
+- M4: Sikkerhedsnet. En Codex-turn, der stopper på "usage limit" (`codexErrorInfo: "usageLimitExceeded"`), gemmes som `WIP: … (quota)`. Den tæller ikke som et fejlet forsøg og bruger ikke stigen. Trinnet tages om, når kvoten er tilbage.
+- M4: `/factory boost [3h|90m|off]` tilsidesætter fabrikkens egne kvoteregler til midnat eller i en given tid. Codex' egen grænse gælder stadig.
+- M4: `factory.yml` har sektionen `quota` (`pause_below_5h`, `reserve_for_me`, `pacing`). Statusissuet viser kvoten, dagens budget, næste start og en aktiv boost.
 - M3b: `factory daemon` henter arbejde fra GitHub-boardet i prioriteret rækkefølge, springer kort med `factory:hold`, åbne afhængigheder (sub-issues og "blocked by") eller anden fokus over, flytter kortet til "In progress" og videre til "In review", når workflowet er færdigt. Se `docs/daemon.md`.
 - M3b: Heartbeat hvert minut til det fastgjorte issue "Factory Status" med en dansk oversigt og tilstanden som JSON.
 - M3b: ChatOps fra ejeren: `/factory pause | resume | status | halt | stop | retry [--runner] | hold | focus | workflow | reject | approve`. Én handler, som M5a's API også skal bruge.

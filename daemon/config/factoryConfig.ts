@@ -4,6 +4,17 @@ import { z } from 'zod';
 
 const Repo = z.string().regex(/^[\w.-]+\/[\w.-]+$/, 'must look like owner/name');
 
+/** A share from 0 to 100, written as `15%` or `15`. */
+const Percent = z
+  .union([
+    z.number(),
+    z
+      .string()
+      .regex(/^\d+(\.\d+)?\s*%$/, 'must look like 15%')
+      .transform((s) => Number.parseFloat(s)),
+  ])
+  .pipe(z.number().min(0).max(100));
+
 export const FactoryConfig = z.object({
   board: z.object({
     owner: z.string().min(1),
@@ -21,6 +32,16 @@ export const FactoryConfig = z.object({
   limits: z
     .object({ ci_timeout_minutes: z.number().positive().default(30) })
     .default({ ci_timeout_minutes: 30 }),
+  quota: z
+    .object({
+      /** Pause when less than this share of the 5-hour window is left. */
+      pause_below_5h: Percent.default(15),
+      /** The share of the weekly quota the factory never touches. */
+      reserve_for_me: Percent.default(0),
+      /** `even`: spread the weekly quota evenly over the days until it resets. */
+      pacing: z.enum(['even', 'none']).default('even'),
+    })
+    .prefault({}),
 });
 export type FactoryConfig = z.infer<typeof FactoryConfig>;
 

@@ -9,6 +9,8 @@ export interface ScriptedTurn {
   output?: unknown;
   /** Make the turn fail as a runner error. */
   error?: string;
+  /** Make the turn fail on the vendor's usage limit. */
+  quota?: boolean;
   /** Whether the turn leaves changes to commit. Defaults to true for write tasks. */
   changes?: boolean;
   /** Simulate an interrupt. */
@@ -43,6 +45,18 @@ export class ScriptRunner implements Runner {
     const workspace = task.workspace as FakeWorkspace;
     if (turn.interrupted || task.signal?.aborted) {
       yield { type: 'report', report: await finishRun(task, { kind: 'interrupted' }) };
+      return;
+    }
+    if (turn.quota) {
+      workspace.dirty = turn.changes ?? true;
+      yield {
+        type: 'report',
+        report: await finishRun(task, {
+          kind: 'failed',
+          error: 'Codex-turnen fejlede: usage limit',
+          quotaExhausted: true,
+        }),
+      };
       return;
     }
     if (turn.error !== undefined) {

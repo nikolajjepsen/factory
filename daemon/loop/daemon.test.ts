@@ -10,6 +10,7 @@ import { FactoryConfig } from '../config/factoryConfig.js';
 import { factoryRoot, type Project } from '../config/projects.js';
 import type { Board, BoardItem, BoardSnapshot } from '../github/board.js';
 import { FACTORY_COMMENT_MARKER, type IssueComment } from '../github/github.js';
+import type { QuotaSnapshot, QuotaSource } from '../quota/quota.js';
 import type { RunEvent, Runner, RunTask } from '../runner/runner.js';
 import { SqliteStore } from '../store/store.js';
 import { LABELS, WorkflowEngine } from '../workflow/engine.js';
@@ -68,6 +69,32 @@ class GatedRunner implements Runner {
   }
 }
 
+/** A quota source that returns whatever snapshot the test sets, and counts reads. */
+class FakeQuota implements QuotaSource {
+  reads = 0;
+  constructor(public snapshot: QuotaSnapshot) {}
+  read(): Promise<QuotaSnapshot> {
+    this.reads++;
+    return Promise.resolve(this.snapshot);
+  }
+  subscribe(): () => void {
+    return () => undefined;
+  }
+  close(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
+// The harness clock starts Sunday 11 October 2026, 20:00 in Copenhagen.
+const FIVE_HOUR_RESET = '2026-10-11T19:30:00.000Z';
+// Friday 16 October 00:00 in Copenhagen: five days after Sunday's midnight.
+const WEEKLY_RESET = '2026-10-15T22:00:00.000Z';
+const quotaSnapshot = (fiveHourUsed: number, weeklyUsed: number): QuotaSnapshot => ({
+  fiveHour: { usedPercent: fiveHourUsed, resetsAt: FIVE_HOUR_RESET },
+  weekly: { usedPercent: weeklyUsed, resetsAt: WEEKLY_RESET },
+  fetchedAt: '2026-10-11T18:00:00.000Z',
+});
+
 const card = (number: number, overrides: Partial<BoardItem> = {}): BoardItem => ({
   itemId: `item-${String(number)}`,
   status: 'Ready',
@@ -83,7 +110,11 @@ const card = (number: number, overrides: Partial<BoardItem> = {}): BoardItem => 
 });
 
 async function harness(
-  options: { items?: BoardItem[]; runner?: (inner: ScriptRunner) => Runner } = {},
+  options: {
+    items?: BoardItem[];
+    runner?: (inner: ScriptRunner) => Runner;
+    quota?: QuotaSource;
+  } = {},
 ) {
   const dir = await mkdtemp(join(tmpdir(), 'ai-factory-daemon-'));
   const project: Project = { name: 'demo', repo: 'o/demo', path: dir };
@@ -129,6 +160,7 @@ async function harness(
     projects: () => Promise.resolve(new Map([[project.name, project]])),
     library,
     knownRunners: ['codex'],
+    ...(options.quota && { quota: options.quota }),
     haltFile: join(dir, 'HALT'),
     now,
     // Yield to the event loop, so run() loops do not starve timers in tests.
@@ -337,6 +369,128 @@ describe('Daemon: emergency brake', () => {
     expect(existsSync(join(h.dir, 'HALT'))).toBe(true);
     expect(h.store.findLatestRun('demo', 12)?.status).toBe('stopped');
     expect(await h.daemon.tick()).toBe('paused');
+  });
+});
+
+describe('Daemon: quota policy', () => {
+  it('waits for the 5-hour reset below pause_below_5h, re-reads every 5 minutes, then resumes', async () => {
+    const quota = new FakeQuota(quotaSnapshot(90, 20));
+    const h = await harness({ quota });
+    expect(await h.daemon.tick()).toBe('waiting');
+    expect(h.daemon.mode).toBe('waiting_quota');
+    expect(h.daemon.state()).toMatchObject({
+      mode: 'waiting_quota',
+      reason: '5-timersvinduet har 10 % tilbage (grænsen er 15 %).',
+      nextStart: FIVE_HOUR_RESET,
+    });
+    expect(h.board.moves).toEqual([]);
+    expect(h.script.tasks).toEqual([]);
+
+    await h.daemon.heartbeat();
+    const body = h.github.issueBodies.get(h.github.createdIssues[0]?.number ?? 0) ?? '';
+    expect(body).toContain('**Tilstand:** Venter på kvote');
+    expect(body).toContain('**Næste start:** 2026-10-11 21:30:00');
+
+    h.advance(60_000);
+    expect(await h.daemon.tick()).toBe('waiting');
+    expect(quota.reads).toBe(1);
+    h.advance(5 * 60_000);
+    expect(await h.daemon.tick()).toBe('waiting');
+    expect(quota.reads).toBe(2);
+
+    quota.snapshot = quotaSnapshot(0, 20);
+    h.advance(90 * 60_000);
+    await h.tickUntilIdle();
+    expect(h.store.findLatestRun('demo', 12)?.status).toBe('done');
+    expect(h.daemon.state().nextStart).toBeNull();
+  });
+
+  it('lets the running turn finish and starts no new one when the daily budget is spent', async () => {
+    // Sunday 20:00: 60 % is left, and 4 of the 100 hours until the reset fall before midnight.
+    const quota = new FakeQuota(quotaSnapshot(10, 40));
+    const h = await harness({ quota });
+    h.script.script({}, { output: { score: 3, passed: false, feedback: ['Mangler tests.'] } });
+    expect(await h.daemon.tick()).toBe('worked');
+    expect(h.script.writeTasks).toHaveLength(1);
+
+    quota.snapshot = quotaSnapshot(30, 43);
+    h.advance(1000);
+    expect(await h.daemon.tick()).toBe('waiting');
+    expect(h.daemon.state()).toMatchObject({
+      mode: 'waiting_quota',
+      reason: 'Dagens budget på 2,4 % af ugekvoten er brugt.',
+      // Monday 00:00 in Copenhagen.
+      nextStart: '2026-10-11T22:00:00.000Z',
+      quota: { pacing: { day: '2026-10-11', budget: 2.4, usedToday: 3 } },
+    });
+    expect(h.script.writeTasks).toHaveLength(1);
+    expect(h.store.findLatestRun('demo', 12)).toMatchObject({ status: 'active', attempt: 2 });
+  });
+
+  it('treats a Codex usage limit as waiting for quota, not as a failed attempt', async () => {
+    const quota = new FakeQuota(quotaSnapshot(50, 30));
+    const h = await harness({ quota });
+    h.script.script({ quota: true });
+    expect(await h.daemon.tick()).toBe('worked');
+    expect(h.daemon.state()).toMatchObject({
+      mode: 'waiting_quota',
+      reason: 'Codex meldte, at kvoten er brugt op.',
+      nextStart: FIVE_HOUR_RESET,
+    });
+    expect(h.store.findLatestRun('demo', 12)).toMatchObject({
+      status: 'active',
+      attempt: 1,
+      ladderUsed: 0,
+    });
+
+    h.advance(10 * 60_000);
+    expect(await h.daemon.tick()).toBe('waiting');
+    expect(h.script.writeTasks).toHaveLength(1);
+
+    h.advance(90 * 60_000);
+    await h.tickUntilIdle();
+    expect(h.store.findLatestRun('demo', 12)?.status).toBe('done');
+    expect(h.store.findLatestRun('demo', 12)?.feedback).toEqual([]);
+  });
+});
+
+describe('Daemon: /factory boost', () => {
+  it('sets the quota rules aside until midnight, then they apply again', async () => {
+    const quota = new FakeQuota(quotaSnapshot(90, 40));
+    const h = await harness({ quota });
+    h.script.script({}, { output: { score: 3, passed: false, feedback: ['Mangler tests.'] } });
+    expect(await h.daemon.tick()).toBe('waiting');
+
+    h.comment('/factory boost');
+    h.advance(60_000);
+    expect(await h.daemon.tick()).toBe('worked');
+    expect(h.script.writeTasks).toHaveLength(1);
+    const reply = h.github.comments.at(-1)?.body ?? '';
+    expect(reply).toContain('Kvotereglerne er tilsidesat til i morgen kl. 00.00');
+    expect(h.daemon.state().quotaOverrideUntil).toBe('2026-10-11T22:00:00.000Z');
+
+    h.advance(4 * 60 * 60_000);
+    expect(await h.daemon.tick()).toBe('waiting');
+    expect(h.daemon.state().quotaOverrideUntil).toBeNull();
+    expect(h.lines.some((l) => l.includes('Boost er udløbet'))).toBe(true);
+  });
+
+  it('still stops when Codex itself has no quota left, and boost off ends it early', async () => {
+    const quota = new FakeQuota(quotaSnapshot(100, 40));
+    const h = await harness({ quota });
+    h.comment('/factory boost 2h');
+    expect(await h.daemon.tick()).toBe('waiting');
+    expect(h.daemon.state()).toMatchObject({
+      reason: '5-timersvinduet er brugt op hos Codex.',
+      nextStart: FIVE_HOUR_RESET,
+      quotaOverrideUntil: '2026-10-11T20:00:00.000Z',
+    });
+
+    h.comment('/factory boost off');
+    h.advance(60_000);
+    await h.daemon.tick();
+    expect(h.daemon.state().quotaOverrideUntil).toBeNull();
+    expect(h.daemon.state().reason).toBe('5-timersvinduet har 0 % tilbage (grænsen er 15 %).');
   });
 });
 

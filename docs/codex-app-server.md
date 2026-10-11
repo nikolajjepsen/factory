@@ -38,6 +38,7 @@ Se `docs/runner.md` for, hvordan runneren bruger dem. Fund fra rigtige kørsler 
 - Forløbet kommer som notifikationer: `turn/started`, `item/started` og `item/completed` (fx `agentMessage`, `commandExecution`, `fileChange`), mange `item/agentMessage/delta`, `thread/tokenUsage/updated` og til sidst `turn/completed`.
 - Med `outputSchema` er den sidste `agentMessage` (`phase: "final_answer"`) JSON efter skemaet.
 - Sandkassen `workspaceWrite` blokerer `git commit` i et worktree: `index.lock ... Operation not permitted`.
+- Fejl (`turn.error` i `turn/completed` og `error`-notifikationen) har typen `TurnError`: `message`, `codexErrorInfo`, `additionalDetails`. `codexErrorInfo` er en kode som `"usageLimitExceeded"`, `"rateLimitExceeded"` eller `"contextWindowExceeded"`, eller et objekt for nogle koder. Kilde: `codex app-server generate-ts` (codex-cli 0.162.1). En rigtig "usage limit"-fejl er ikke optaget endnu, så runneren matcher også på teksten "usage limit".
 
 ## CLI
 

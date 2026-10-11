@@ -253,24 +253,41 @@ describe('CodexRunner interrupts', () => {
 });
 
 describe('CodexRunner failures', () => {
-  it('reports a failed turn with its error message', async () => {
-    const failed = completed.notifications.map((n) =>
+  const failingWith = (error: Record<string, unknown>) =>
+    completed.notifications.map((n) =>
       n.method === 'turn/completed'
         ? {
             ...n,
             params: {
               threadId: '01a12bd2-00cf-7010-94a4-27d0d82d5f7e',
-              turn: { id: 't', status: 'failed', error: { message: 'usage limit reached' } },
+              turn: { id: 't', status: 'failed', error },
             },
           }
         : n,
     );
-    const { runner, workspace } = await setup(replay(completed, { notifications: failed }));
+
+  it('reports a failed turn with its error message', async () => {
+    const notifications = failingWith({ message: 'stream disconnected', codexErrorInfo: 'other' });
+    const { runner, workspace } = await setup(replay(completed, { notifications }));
     const { report } = await runToEnd(runner, taskFor(workspace));
     expect(report).toMatchObject({
       status: 'failed',
-      summary: 'Codex-turnen fejlede: usage limit reached',
+      summary: 'Codex-turnen fejlede: stream disconnected',
     });
+    expect(report.quotaExhausted).toBeUndefined();
+  });
+
+  it('marks a turn stopped by the usage limit, by error code or by message', async () => {
+    for (const error of [
+      { message: 'Try again later.', codexErrorInfo: 'usageLimitExceeded' },
+      { message: "You've hit your usage limit." },
+    ]) {
+      const { runner, workspace } = await setup(
+        replay(completed, { notifications: failingWith(error) }),
+      );
+      const { report } = await runToEnd(runner, taskFor(workspace));
+      expect(report).toMatchObject({ status: 'failed', quotaExhausted: true });
+    }
   });
 
   it('fails cleanly when the app-server crashes mid-turn', async () => {

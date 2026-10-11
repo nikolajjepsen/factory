@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import pkg from '../../package.json' with { type: 'json' };
 import type { QuotaSnapshot } from '../quota/quota.js';
 import type { RunIssueResult } from '../run/runIssue.js';
-import type { RunEvent, RunReport } from '../runner/runner.js';
+import { QuotaExhaustedError, type RunEvent, type RunReport } from '../runner/runner.js';
 import type { AttemptRecord } from '../store/store.js';
 import type { EngineEvent } from '../workflow/engine.js';
 import type { RunState } from '../workflow/runState.js';
@@ -376,6 +376,16 @@ describe('factory run (workflow)', () => {
     });
     expect(stopped.exitCode).toBe(EXIT_INTERRUPTED);
     expect(stopped.stdout).toContain('Fortsæt med: factory run --project demo --issue 12');
+  });
+
+  it('says the run is saved when the Codex quota runs out', async () => {
+    const out = await run(['run', '--project', 'demo', '--issue', '12'], {
+      runWorkflow: () =>
+        Promise.reject(new QuotaExhaustedError('Codex-turnen fejlede: usage limit')),
+    });
+    expect(out.exitCode).toBe(1);
+    expect(out.stderr).toContain('Codex-kvoten er brugt op (Codex-turnen fejlede: usage limit).');
+    expect(out.stderr).toContain('Kørslen er gemt.');
   });
 });
 

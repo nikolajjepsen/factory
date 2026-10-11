@@ -1,6 +1,6 @@
 import { type Command, InvalidArgumentError } from 'commander';
 import type { RunIssueResult } from '../../run/runIssue.js';
-import type { RunEvent } from '../../runner/runner.js';
+import { QuotaExhaustedError, type RunEvent } from '../../runner/runner.js';
 import type { EngineEvent } from '../../workflow/engine.js';
 import type { RunState } from '../../workflow/runState.js';
 
@@ -175,6 +175,12 @@ export function registerRunCommand(program: Command, deps: RunCommandDeps): void
         if (run.status === 'stopped') deps.setExitCode(EXIT_INTERRUPTED);
         else if (run.status === 'blocked') deps.setExitCode(1);
       } catch (error) {
+        if (error instanceof QuotaExhaustedError) {
+          command.error(
+            `Codex-kvoten er brugt op (${error.message}). Kørslen er gemt. Kør samme kommando igen, når kvoten er nulstillet; se \`factory quota\`.`,
+            { exitCode: 1 },
+          );
+        }
         const message = error instanceof Error ? error.message : String(error);
         command.error(`factory run fejlede: ${message}`, { exitCode: 1 });
       } finally {

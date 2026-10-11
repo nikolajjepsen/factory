@@ -6,7 +6,7 @@ import { checkRun, FakeGitHub } from '../../test/support/fakeGitHub.js';
 import { FakeWorkspace } from '../../test/support/fakeWorkspace.js';
 import { ScriptRunner } from '../../test/support/scriptRunner.js';
 import { factoryRoot, type Project } from '../config/projects.js';
-import type { Runner } from '../runner/runner.js';
+import { QuotaExhaustedError, type Runner } from '../runner/runner.js';
 import { SqliteStore } from '../store/store.js';
 import { type EngineEvent, LABELS, WorkflowEngine } from './engine.js';
 import { AgentLibrary } from './load.js';
@@ -217,13 +217,42 @@ stages:
           'stages:\n  - id: implement\n    agent: implementer\n    on_fail: [retry_with_feedback x1, escalate: human]\n',
       },
     });
-    h.runner.script({ error: 'Codex-turnen fejlede: usage limit' }, { error: 'igen' });
+    h.runner.script({ error: 'Agenten afleverede ingen slutrapport.' }, { error: 'igen' });
     const run = await settle(h);
     expect(h.ladder()).toEqual(['retry_with_feedback x1']);
     expect(run.status).toBe('blocked');
     expect(h.runner.writeTasks[1]?.prompt).toContain(
-      '[agent, forsøg 1] Codex-turnen fejlede: usage limit',
+      '[agent, forsøg 1] Agenten afleverede ingen slutrapport.',
     );
+  });
+
+  it('throws QuotaExhaustedError on a usage limit and leaves the run to be retaken', async () => {
+    const h = await harness();
+    h.runner.script({ quota: true });
+    const run = await h.engine.start('demo', 12);
+    await expect(h.engine.advance(run)).rejects.toBeInstanceOf(QuotaExhaustedError);
+    const saved = h.store.getRun(run.id);
+    expect(saved).toMatchObject({ status: 'active', attempt: 1, ladderUsed: 0, turnDone: false });
+    expect(saved?.feedback).toEqual([]);
+    expect(h.workspace.commitMessages).toEqual(['WIP: demo#12 (quota)']);
+    expect(h.store.attempts({ project: 'demo', issue: 12 })).toEqual([]);
+
+    const done = await h.engine.runUntilSettled(saved ?? run);
+    expect(done.status).toBe('done');
+    expect(h.ladder()).toEqual([]);
+  });
+
+  it('retakes a review gate that hit the usage limit without failing it', async () => {
+    const h = await harness();
+    h.runner.script({}, { quota: true });
+    const run = await h.engine.start('demo', 12);
+    await expect(h.engine.advance(run)).rejects.toBeInstanceOf(QuotaExhaustedError);
+    const saved = h.store.getRun(run.id);
+    expect(saved).toMatchObject({ status: 'active', turnDone: true, gateIndex: 1, attempt: 1 });
+    const done = await h.engine.runUntilSettled(saved ?? run);
+    expect(done.status).toBe('done');
+    expect(h.runner.writeTasks).toHaveLength(1);
+    expect(h.runner.reviewTasks).toHaveLength(2);
   });
 
   it('feeds red CI back to the implementer with the log excerpt', async () => {

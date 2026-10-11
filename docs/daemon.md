@@ -7,8 +7,10 @@
 1. Læs nye `/factory`-kommentarer fra ejeren.
 2. Er nødbremsen aktiv, eller er fabrikken sat på pause: gør intet andet.
 3. Tjek kørsler, der venter på en `human`-gate.
-4. Har en kørsel mere at gøre: kør ét trin (én agent-turn og dens gates).
-5. Ellers: tag det øverste egnede kort i "Ready", flyt det til "In progress" og start dets workflow.
+4. Har en kørsel mere at gøre: tjek kvoten, og kør ét trin (én agent-turn og dens gates).
+5. Ellers: find det øverste egnede kort i "Ready", tjek kvoten, flyt kortet til "In progress" og start dets workflow.
+
+Tillader kvoten ikke et nyt trin, går daemonen i `waiting_quota` (se "Kvote").
 
 Når en kørsel er færdig, flyttes kortet til "In review", og PR'en får `factory:ready-to-merge`. Er der intet at lave, venter daemonen et minut.
 
@@ -28,11 +30,46 @@ Grunden vises i køen i statusissuet.
 
 ## Tilstande
 
-`running`, `idle`, `paused`, `waiting_quota` (M4) og `error`. `offline` er ikke en tilstand, daemonen melder. Læsere udleder den, når heartbeat er over 5 minutter gammel.
+`running`, `idle`, `paused`, `waiting_quota` og `error`. `offline` er ikke en tilstand, daemonen melder. Læsere udleder den, når heartbeat er over 5 minutter gammel.
 
 ## Heartbeat
 
 Hvert minut redigerer daemonen det fastgjorte issue "Factory Status" i `status_repo`. Det oprettes og fastgøres første gang. Brødteksten er en dansk oversigt (tilstand, heartbeat, aktuel opgave, kø, venter på dig, seneste log) og hele tilstanden som JSON i en HTML-kommentar, som dashboardets `github`-tilstand (M5b) læser.
+
+## Kvote
+
+Daemonen læser Codex-kvoten (`account/rateLimits/read`) før hvert trin, hvert 5. minut, mens den venter, og ved heartbeat, hvis den seneste læsning er over 5 minutter gammel. Reglerne står i `factory.yml`:
+
+```yaml
+quota:
+  pause_below_5h: 15%   # vent, når 5-timersvinduet har mindre end dette tilbage
+  reserve_for_me: 0%    # den del af ugekvoten, fabrikken aldrig rører
+  pacing: even          # even: fordel ugekvoten jævnt over dagene. none: ingen dagsbudget
+```
+
+**Pacing (`even`).** Ugekvoten (minus reserven) fordeles jævnt over tiden til ugens nulstilling. Hver dag får sin andel af tiden før midnat i daemonens tidszone:
+
+- En dag, der starter ved midnat, får det, der er tilbage, delt med antal dage til nulstilling. 60 % tilbage og 4 dage giver 15 %.
+- En dag, der starter midt i døgnet (første start, eller den dag ugen nulstilles), får kun andelen af sine resterende timer. Søndag kl. 20 med 100 timer til nulstilling giver 4/100 af det, der er tilbage.
+- Den sidste dag tæller som en brøkdel, og ender ugen før midnat, må resten bruges.
+
+Budgettet fastsættes, når dagen starter, og gemmes i `settings` (`quota_pacing_day`), så det hverken skrumper i løbet af dagen eller nulstilles ved genstart. Dagens forbrug er ugens `usedPercent` nu minus værdien ved dagens start. Ubrugt budget ruller videre, fordi morgendagens budget regnes ud fra det, der er tilbage.
+
+**Når en grænse nås**, går daemonen i `waiting_quota` med `nextStart`:
+
+| Grænse | `nextStart` |
+| --- | --- |
+| 5-timersvinduet under `pause_below_5h` | 5-timersvinduets nulstilling |
+| Ugekvoten nede på `reserve_for_me` | ugens nulstilling |
+| Dagens budget brugt | næste midnat, eller ugens nulstilling, hvis den kommer før |
+
+Gælder flere, bruges den seneste. En agent-turn, der allerede kører, får lov at blive færdig. Statusissuet viser "Venter på kvote", næste start og dagens budget. Kørsler, der venter på en `human`-gate, tjekkes stadig, fordi det ikke bruger kvote.
+
+**Sikkerhedsnet.** Melder Codex "usage limit" midt i en turn (`codexErrorInfo: "usageLimitExceeded"`, eller teksten "usage limit"), gemmes arbejdet som `WIP: … (quota)`, og kørslen står uændret. Forsøget tæller ikke som fejlet, stigen bruges ikke, og trinnet tages om, når kvoten er tilbage. `nextStart` er reglernes starttid. Viser snapshottet endnu ikke grænsen, bruges nulstillingen af et fuldt vindue og ellers 5-timersvinduets nulstilling.
+
+**`/factory boost`** tilsidesætter fabrikkens egne regler (pacing, `pause_below_5h` og `reserve_for_me`) til midnat, eller i en given tid (`/factory boost 3h`, `90m`). Codex' egen grænse gælder stadig: et vindue på 100 % eller en "usage limit"-fejl stopper fabrikken. `/factory boost off` slår reglerne til igen. Forbruget under boost tæller med i dagens forbrug, så resten af ugens dagsbudgetter bliver mindre. Boost gemmes i `settings` og overlever genstart.
+
+`factory run` følger ikke kvotereglerne. Du starter den selv. Melder Codex "usage limit", stopper den med en besked om, at kørslen er gemt.
 
 ## ChatOps
 
@@ -47,6 +84,7 @@ Kun kommentarer fra `owner_login` udføres. De læses fra statusissuets repo og 
 /factory workflow #N <navn> brug et andet workflow fra næste start
 /factory reject #N "…"      fejlet gate med teksten som feedback
 /factory approve #N         godkend en human-gate
+/factory boost [3h|90m|off] tilsidesæt kvotereglerne (til midnat uden varighed)
 ```
 
 `#N` kan skrives som `#12`, `loge-app#12` eller `owner/repo#12`. På et projekts issue kan nummeret udelades.

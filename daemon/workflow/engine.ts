@@ -8,7 +8,12 @@ import {
   readOptional,
 } from '../prompt/buildPrompt.js';
 import { pullRequestBody } from '../run/runIssue.js';
-import type { RunEvent, Runner, RunReport } from '../runner/runner.js';
+import {
+  QuotaExhaustedError,
+  type RunEvent,
+  type Runner,
+  type RunReport,
+} from '../runner/runner.js';
 import type { Store } from '../store/store.js';
 import { branchName, type PrepareOptions, type Workspace } from '../workspace/workspace.js';
 import {
@@ -88,6 +93,7 @@ interface StepContext {
  * Interprets workflow files. A generic loop: for each stage, run the agent, then its gates in
  * order; the first failing gate takes the next step on the stage's escalation ladder; an empty
  * ladder blocks the issue. State is saved after every step, so a run survives restarts.
+ * A turn that hits the usage limit throws QuotaExhaustedError and leaves the run untouched.
  */
 export class WorkflowEngine {
   constructor(private readonly deps: EngineDeps) {}
@@ -329,6 +335,12 @@ export class WorkflowEngine {
       if (event.type === 'report') report = event.report;
     }
     if (!report) throw new Error(`runner ${runner.name} ended without a report`);
+    if (report.quotaExhausted) {
+      // Not a failure: the run stays as it was, and the daemon waits for the quota.
+      this.#save(run);
+      this.#status(run, 'Kvoten slap op midt i turnen. Trinnet tages om, når der er kvote igen.');
+      throw new QuotaExhaustedError(report.summary);
+    }
     this.#logAttempt(run, ctx, {
       gate: null,
       score: null,

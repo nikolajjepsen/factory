@@ -45,6 +45,8 @@ export interface RunReport {
   tokens?: TokenUsage;
   /** The parsed final answer: an AgentReport, or the `readOnly.schema` result. */
   output?: unknown;
+  /** Set on a failed run that stopped because the vendor's usage limit was reached. */
+  quotaExhausted?: true;
 }
 
 export type RunEvent =
@@ -62,4 +64,15 @@ export type RunEvent =
 export interface Runner {
   readonly name: string;
   run(task: RunTask): AsyncIterable<RunEvent>;
+}
+
+/**
+ * Thrown by the engine when a turn hits the vendor's usage limit. The run is left as it was, so
+ * the step is taken again once the quota allows; the failure never counts against the ladder.
+ */
+export class QuotaExhaustedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'QuotaExhaustedError';
+  }
 }

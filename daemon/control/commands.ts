@@ -15,6 +15,7 @@ export const COMMANDS = [
   'workflow',
   'reject',
   'approve',
+  'boost',
 ] as const;
 export type CommandName = (typeof COMMANDS)[number];
 
@@ -36,6 +37,8 @@ export const Command = z
     runner: z.string().min(1).optional(),
     workflow: z.string().min(1).optional(),
     feedback: z.string().optional(),
+    /** For `boost`: how long the quota rules are set aside. Unset: until midnight. 0: end it now. */
+    minutes: z.number().int().min(0).optional(),
   })
   .superRefine((c, ctx) => {
     if (NEEDS_ISSUE.includes(c.command) && c.issue === undefined) {
@@ -131,6 +134,20 @@ function parseLine(
     case 'workflow':
       draft.workflow = args.shift();
       break;
+    case 'boost': {
+      const value = args.shift();
+      if (value === undefined) break;
+      if (value.toLowerCase() === 'off') {
+        draft.minutes = 0;
+        break;
+      }
+      const duration = /^(\d+(?:[.,]\d+)?)(h|t|m)$/i.exec(value);
+      if (!duration?.[1] || !duration[2]) return 'skriv en varighed som 3h eller 90m, eller "off".';
+      const amount = Number(duration[1].replace(',', '.'));
+      draft.minutes = Math.round(duration[2].toLowerCase() === 'm' ? amount : amount * 60);
+      if (draft.minutes === 0) return 'varigheden skal være over 0.';
+      break;
+    }
     case 'reject': {
       // Everything after the reference is feedback; surrounding quotes are optional.
       const afterRef = ref

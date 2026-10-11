@@ -1,3 +1,5 @@
+import type { QuotaStatus } from '../quota/policy.js';
+
 /**
  * The daemon is always in one of these modes. `offline` is not a mode the daemon reports: readers
  * derive it when the heartbeat is older than 5 minutes.
@@ -29,8 +31,12 @@ export interface FactoryState {
   /** Why the factory is paused or in error, in Danish. */
   reason?: string;
   heartbeat: string;
-  /** When work resumes, if the factory is waiting (M4 fills this for waiting_quota). */
+  /** When work resumes, while the mode is waiting_quota. Null when the reset time is unknown. */
   nextStart: string | null;
+  /** The latest quota reading and today's pacing budget. Null until the quota is read. */
+  quota: Omit<QuotaStatus, 'block'> | null;
+  /** Until when `/factory boost` sets the quota rules aside. Codex' own limit still applies. */
+  quotaOverrideUntil: string | null;
   focus: string | null;
   current: {
     project: string;

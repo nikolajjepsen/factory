@@ -59,7 +59,7 @@ Fabrikken ændrer aldrig selv CI-konfiguration eller branch protection. En PR, d
 - `docs/workflows.md` – workflow-filer, ordforrådet og motoren
 - `docs/daemon.md` – daemonen: boardet, heartbeat, ChatOps, nødbremse og launchd
 - `projects.yml` – de projekter, fabrikken arbejder på (`repo` og lokal `path`)
-- `factory.yml` – fabrikkens konfiguration: board, ejer, status-repo, runner og grænser
+- `factory.yml` – fabrikkens konfiguration: board, ejer, status-repo, runner, grænser og kvoteregler
 - `CHANGELOG.md` – ændringer i adfærd
 - `daemon/` – kø, tilstandsmaskine, heartbeat, kvote og CLI'en (`daemon/cli/`)
 - `runners/` – motor-adaptere (Codex først)

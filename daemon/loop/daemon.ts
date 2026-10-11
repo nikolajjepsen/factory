@@ -5,6 +5,18 @@ import type { Project } from '../config/projects.js';
 import { type Command, parseChatOps } from '../control/commands.js';
 import type { Board, BoardItem } from '../github/board.js';
 import { FACTORY_COMMENT_MARKER, type GitHub } from '../github/github.js';
+import { formatResetTime } from '../quota/formatQuota.js';
+import {
+  evaluateQuota,
+  latest,
+  nextLocalMidnight,
+  PacingDay,
+  type QuotaBlock,
+  type QuotaStatus,
+  usageLimitResetTime,
+} from '../quota/policy.js';
+import type { QuotaSource } from '../quota/quota.js';
+import { QuotaExhaustedError } from '../runner/runner.js';
 import type { Store } from '../store/store.js';
 import { type EngineEvent, LABELS, type WorkflowEngine } from '../workflow/engine.js';
 import type { AgentLibrary } from '../workflow/load.js';
@@ -24,6 +36,8 @@ export interface DaemonDeps {
   projects: () => Promise<Map<string, Project>>;
   library: (project: Project) => AgentLibrary;
   knownRunners: readonly string[];
+  /** Where the quota is read. Without it, the quota policy is off. */
+  quota?: QuotaSource;
   /** `~/.ai-factory/HALT`: while it exists, nothing runs. */
   haltFile: string;
   now: () => Date;
@@ -43,13 +57,21 @@ export interface CommandResult {
   reply: boolean;
 }
 
-const SETTING = { paused: 'paused', focus: 'focus', commentsSince: 'comments_since' } as const;
+const SETTING = {
+  paused: 'paused',
+  focus: 'focus',
+  commentsSince: 'comments_since',
+  pacingDay: 'quota_pacing_day',
+  boostUntil: 'quota_boost_until',
+} as const;
 const LOG_LINES = 50;
 /** How far back the first comment poll looks, so old commands are not replayed. */
 const FIRST_POLL_LOOKBACK_MS = 10 * 60_000;
 /** Overlap between polls; handled comment ids make it safe. */
 const POLL_OVERLAP_MS = 2 * 60_000;
 const DONE_VISIBLE_MS = 7 * 24 * 60 * 60_000;
+/** How often the quota is read while waiting for it, and while idle. */
+const QUOTA_POLL_MS = 5 * 60_000;
 
 /**
  * The factory's main loop. Each tick: read commands, respect halt and pause, check runs parked on
@@ -69,6 +91,11 @@ export class Daemon {
   #repos = new Map<string, string>();
   readonly #log: string[] = [];
   #polling = false;
+  #quota: QuotaStatus | undefined;
+  #quotaReadAt = 0;
+  /** Set when Codex reported a usage limit the snapshot did not show: no new turns before `until`. */
+  #usageLimit: (QuotaBlock & { until: number }) | undefined;
+  #nextStart: string | null = null;
 
   constructor(deps: DaemonDeps) {
     this.#deps = deps;
@@ -81,6 +108,16 @@ export class Daemon {
 
   get #paused(): boolean {
     return this.#deps.store.getSetting(SETTING.paused) === 'true';
+  }
+
+  /** Until when `/factory boost` sets the quota rules aside, or null. Clears an expired boost. */
+  #boostUntil(): string | null {
+    const until = this.#deps.store.getSetting(SETTING.boostUntil);
+    if (!until) return null;
+    if (this.#deps.now().getTime() < Date.parse(until)) return until;
+    this.#deps.store.setSetting(SETTING.boostUntil, undefined);
+    this.#write('Boost er udløbet. Kvotereglerne gælder igen.');
+    return null;
   }
 
   get #focus(): string | null {
@@ -106,7 +143,14 @@ export class Daemon {
       mode: this.#mode,
       ...(this.#reason && { reason: this.#reason }),
       heartbeat: now().toISOString(),
-      nextStart: null,
+      nextStart: this.#mode === 'waiting_quota' ? this.#nextStart : null,
+      quota: this.#quota
+        ? {
+            snapshot: this.#quota.snapshot,
+            ...(this.#quota.pacing && { pacing: this.#quota.pacing }),
+          }
+        : null,
+      quotaOverrideUntil: this.#boostUntil(),
       focus: this.#focus,
       current: this.#current,
       queue: this.#queue,
@@ -151,7 +195,7 @@ export class Daemon {
   }
 
   /** One pass of the loop. */
-  async tick(): Promise<'worked' | 'idle' | 'paused'> {
+  async tick(): Promise<'worked' | 'idle' | 'paused' | 'waiting'> {
     const { store, engine, board, config } = this.#deps;
     await this.pollCommands();
     const halt = await this.#haltReason();
@@ -163,6 +207,7 @@ export class Daemon {
     }
     const active = store.listRuns(['active'])[0];
     if (active) {
+      if (await this.#waitForQuota()) return 'waiting';
       await this.#step(active);
       return 'worked';
     }
@@ -184,6 +229,7 @@ export class Daemon {
       this.#setMode('idle');
       return 'idle';
     }
+    if (await this.#waitForQuota()) return 'waiting';
     await this.#moveCard(next.project, next.issue, config.board.status.in_progress);
     const run = await engine.start(next.project, next.issue);
     await this.#step(run);
@@ -225,6 +271,10 @@ export class Daemon {
   }
 
   async heartbeat(): Promise<void> {
+    // Keep the quota shown in the status fresh while nothing else reads it.
+    if (this.#deps.quota && this.#deps.now().getTime() - this.#quotaReadAt >= QUOTA_POLL_MS) {
+      await this.#readQuota();
+    }
     try {
       await this.#statusIssue.publish(this.state());
     } catch (error) {
@@ -312,6 +362,28 @@ export class Daemon {
           );
         case 'status':
           return done(this.statusText(), true);
+        case 'boost': {
+          // Re-evaluate the quota on the next tick, also while waiting for it.
+          this.#quotaReadAt = 0;
+          if (command.minutes === 0) {
+            store.setSetting(SETTING.boostUntil, undefined);
+            return done('Boost er slået fra. Kvotereglerne gælder igen.');
+          }
+          const now = this.#deps.now();
+          const until =
+            command.minutes === undefined
+              ? nextLocalMidnight(now, this.#deps.timeZone)
+              : new Date(now.getTime() + command.minutes * 60_000);
+          store.setSetting(SETTING.boostUntil, until.toISOString());
+          const when = formatResetTime(until.toISOString(), {
+            now,
+            ...(this.#deps.timeZone && { timeZone: this.#deps.timeZone }),
+          });
+          return done(
+            `Kvotereglerne er tilsidesat til ${when}. Fabrikken stopper kun, hvis Codex' egen kvote slipper op. Forbruget trækkes fra resten af ugens budget.`,
+            true,
+          );
+        }
         case 'focus': {
           if (!command.project) {
             store.setSetting(SETTING.focus, undefined);
@@ -430,6 +502,13 @@ export class Daemon {
     }[s.mode];
     const lines = [`**Tilstand:** ${mode}${s.reason ? ` (${s.reason})` : ''}`];
     if (s.focus) lines.push(`**Fokus:** ${s.focus}`);
+    if (s.quotaOverrideUntil) {
+      const until = formatResetTime(s.quotaOverrideUntil, {
+        now: this.#deps.now(),
+        ...(this.#deps.timeZone && { timeZone: this.#deps.timeZone }),
+      });
+      lines.push(`**Boost:** kvotereglerne er tilsidesat til ${until}.`);
+    }
     lines.push(
       s.current
         ? `**Arbejder på:** ${s.current.project}#${String(s.current.issue)} ${s.current.title} – stage ${s.current.stage}, forsøg ${String(s.current.attempt)}`
@@ -474,9 +553,79 @@ export class Daemon {
       const after = await this.#deps.engine.advance(run, controller.signal);
       if (after.status === 'done')
         await this.#moveCard(after.project, after.issue, this.#deps.config.board.status.review);
+    } catch (error) {
+      if (!(error instanceof QuotaExhaustedError)) throw error;
+      await this.#onUsageLimit(error.message);
     } finally {
       this.#currentAbort = undefined;
       this.#current = null;
+    }
+  }
+
+  /**
+   * Checks the quota before a step. Returns true, and enters waiting_quota, when no new turn may
+   * start. A turn already running is never interrupted for quota.
+   */
+  async #waitForQuota(): Promise<boolean> {
+    if (!this.#deps.quota) return false;
+    const now = this.#deps.now().getTime();
+    // While waiting, read again every 5 minutes, or as soon as the wait should be over.
+    const due =
+      this.#mode !== 'waiting_quota' ||
+      now - this.#quotaReadAt >= QUOTA_POLL_MS ||
+      (this.#nextStart !== null && now >= Date.parse(this.#nextStart));
+    if (due) await this.#readQuota();
+    if (this.#usageLimit && now >= this.#usageLimit.until) this.#usageLimit = undefined;
+    const block = latest([
+      ...(this.#quota?.block ? [this.#quota.block] : []),
+      ...(this.#usageLimit ? [this.#usageLimit] : []),
+    ]);
+    if (!block) return false;
+    this.#setMode('waiting_quota', block.reason);
+    this.#nextStart = block.nextStart;
+    return true;
+  }
+
+  /** The safety net: Codex stopped a turn on its usage limit before the policy saw it coming. */
+  async #onUsageLimit(message: string): Promise<void> {
+    await this.#readQuota();
+    const now = this.#deps.now().getTime();
+    const snapshot = this.#quota?.snapshot;
+    const nextStart =
+      this.#quota?.block?.nextStart ?? (snapshot ? usageLimitResetTime(snapshot) : null);
+    this.#usageLimit = {
+      reason: 'Codex meldte, at kvoten er brugt op.',
+      nextStart,
+      until: nextStart ? Date.parse(nextStart) : now + QUOTA_POLL_MS,
+    };
+    this.#write(`Kvoten slap op: ${message}`);
+    this.#setMode('waiting_quota', this.#usageLimit.reason);
+    this.#nextStart = nextStart;
+  }
+
+  /** Reads the quota and applies the rules. A failed read lets work go on; the safety net remains. */
+  async #readQuota(): Promise<void> {
+    const { quota, store, config, now, timeZone } = this.#deps;
+    if (!quota) return;
+    this.#quotaReadAt = now().getTime();
+    try {
+      const snapshot = await quota.read();
+      const saved = PacingDay.safeParse(JSON.parse(store.getSetting(SETTING.pacingDay) ?? 'null'));
+      const { status, day } = evaluateQuota({
+        snapshot,
+        rules: config.quota,
+        day: saved.success ? saved.data : undefined,
+        now: now(),
+        timeZone,
+        override: this.#boostUntil() !== null,
+      });
+      if (day) store.setSetting(SETTING.pacingDay, JSON.stringify(day));
+      this.#quota = status;
+    } catch (error) {
+      this.#quota = undefined;
+      this.#write(
+        `Kvoten kunne ikke læses: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -569,6 +718,7 @@ export class Daemon {
     }
     this.#mode = mode;
     this.#reason = reason;
+    if (mode !== 'waiting_quota') this.#nextStart = null;
   }
 
   #write(line: string): void {

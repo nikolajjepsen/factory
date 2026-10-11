@@ -20,6 +20,7 @@ import { AgentLibrary, checkReferences } from '../workflow/load.js';
 import type { RunState } from '../workflow/runState.js';
 import { WorktreeManager } from '../workspace/workspace.js';
 import { AppServerClient, type LogLevel } from '../../runners/codex/appServerClient.js';
+import { CodexQuotaSource } from '../../runners/codex/codexQuotaSource.js';
 import { CodexRunner } from '../../runners/codex/codexRunner.js';
 import type { RunCommandOptions } from './commands/run.js';
 import type { WorkflowValidation } from './commands/workflow.js';
@@ -51,7 +52,7 @@ export const libraryFor = (projectPath: string) =>
 /** Starts one shared app-server and builds the runners on top of it. */
 async function withRunners<T>(
   options: Pick<RunCommandOptions, 'model' | 'network'>,
-  work: (runners: Map<string, Runner>) => Promise<T>,
+  work: (runners: Map<string, Runner>, client: AppServerClient) => Promise<T>,
 ): Promise<T> {
   const client = new AppServerClient({ clientInfo, log });
   await client.start();
@@ -62,7 +63,7 @@ async function withRunners<T>(
       ...(options.model && { model: options.model }),
       ...(options.network && { networkAccess: true }),
     });
-    return await work(new Map<string, Runner>([[codex.name, codex]]));
+    return await work(new Map<string, Runner>([[codex.name, codex]]), client);
   } finally {
     await client.stop();
   }
@@ -140,7 +141,9 @@ export async function runDaemon(options: { once: boolean }, signal: AbortSignal)
   const github = new OctokitGitHub(octokit);
   const store = openStore();
   try {
-    await withRunners({}, async (runners) => {
+    await withRunners({}, async (runners, client) => {
+      // The quota is read over the same app-server the runner uses.
+      const quota = new CodexQuotaSource({ client, log });
       // The engine reports to the daemon, which is built after it.
       const sink: { daemon?: Daemon } = {};
       const engine = engineFor(
@@ -156,6 +159,7 @@ export async function runDaemon(options: { once: boolean }, signal: AbortSignal)
         projects: () => loadProjects(projectsFile),
         library: (project) => libraryFor(project.path),
         knownRunners: [...runners.keys()],
+        quota,
         haltFile: join(factoryHome(), 'HALT'),
         now: () => new Date(),
         sleep: (ms, abort) => delay(ms, undefined, abort ? { signal: abort } : {}),
@@ -168,6 +172,7 @@ export async function runDaemon(options: { once: boolean }, signal: AbortSignal)
       } else {
         await daemon.run(signal);
       }
+      await quota.close();
     });
   } finally {
     store.close();

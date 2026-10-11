@@ -1,4 +1,6 @@
 import type { GitHub } from '../github/github.js';
+import { percent } from '../quota/policy.js';
+import { percentLeft } from '../quota/quota.js';
 import type { FactoryState } from './state.js';
 
 export const STATUS_ISSUE_TITLE = 'Factory Status';
@@ -30,7 +32,25 @@ export function renderStatusIssue(state: FactoryState, timeZone?: string): strin
     `**Tilstand:** ${modeLabel[state.mode]}${state.reason ? ` – ${state.reason}` : ''}`,
     `**Heartbeat:** ${time(state.heartbeat, timeZone)} (vises som offline, hvis den er over 5 min gammel)`,
   ];
-  if (state.nextStart) lines.push(`**Næste start:** ${time(state.nextStart, timeZone)}`);
+  if (state.mode === 'waiting_quota') {
+    lines.push(
+      `**Næste start:** ${state.nextStart ? time(state.nextStart, timeZone) : 'ukendt, kvoten tjekkes hvert 5. minut'}`,
+    );
+  }
+  if (state.quota) {
+    const { snapshot, pacing } = state.quota;
+    const budget = pacing
+      ? ` Dagens budget: ${percent(pacing.usedToday)} brugt af ${percent(pacing.budget)}.`
+      : '';
+    lines.push(
+      `**Kvote:** ${percent(percentLeft(snapshot.fiveHour))} tilbage af 5-timersvinduet, ${percent(percentLeft(snapshot.weekly))} af ugen.${budget}`,
+    );
+  }
+  if (state.quotaOverrideUntil) {
+    lines.push(
+      `**Boost:** kvotereglerne er tilsidesat til ${time(state.quotaOverrideUntil, timeZone)}. Kun Codex' egen kvote stopper fabrikken. \`/factory boost off\` slår reglerne til igen.`,
+    );
+  }
   if (state.focus) lines.push(`**Fokus:** ${state.focus}`);
   lines.push('', '### Arbejder på');
   const c = state.current;
@@ -76,7 +96,7 @@ export function renderStatusIssue(state: FactoryState, timeZone?: string): strin
   lines.push(
     '',
     '---',
-    'Kommandoer (kun fra ejeren): `/factory pause | resume | status | halt | stop #N | retry #N [--runner x] | hold #N | focus <projekt>|off | workflow #N <navn> | reject #N "…" | approve #N`',
+    'Kommandoer (kun fra ejeren): `/factory pause | resume | status | halt | stop #N | retry #N [--runner x] | hold #N | focus <projekt>|off | workflow #N <navn> | reject #N "…" | approve #N | boost [3h|off]`',
   );
   return lines.join('\n');
 }

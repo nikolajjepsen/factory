@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import type { CheckRun, GitHub } from '../github/github.js';
-import type { RunEvent, Runner, RunTask, TokenUsage } from '../runner/runner.js';
+import {
+  QuotaExhaustedError,
+  type RunEvent,
+  type Runner,
+  type RunTask,
+  type TokenUsage,
+} from '../runner/runner.js';
 import type { Store } from '../store/store.js';
 import type { RunState } from './runState.js';
 import type { Gate } from './schema.js';
@@ -133,6 +139,7 @@ export async function evaluateReview(
     if (event.type === 'report') report = event.report;
   }
   if (!report || report.status === 'interrupted') throw new GateAborted();
+  if (report.quotaExhausted) throw new QuotaExhaustedError(report.summary);
   const tokens = report.tokens ? { tokens: report.tokens } : {};
   if (report.status === 'failed') {
     return {

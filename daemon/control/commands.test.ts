@@ -53,6 +53,17 @@ describe('parseChatOps', () => {
     ]);
   });
 
+  it('parses boost with no duration, hours, minutes and off', () => {
+    expect(parse('/factory boost').commands).toEqual([{ command: 'boost' }]);
+    expect(parse('/factory boost 3h').commands).toEqual([{ command: 'boost', minutes: 180 }]);
+    expect(parse('/factory boost 1,5t').commands).toEqual([{ command: 'boost', minutes: 90 }]);
+    expect(parse('/factory boost 45m').commands).toEqual([{ command: 'boost', minutes: 45 }]);
+    expect(parse('/factory boost off').commands).toEqual([{ command: 'boost', minutes: 0 }]);
+    expect(parse('/factory boost længe').errors).toEqual([
+      '"/factory boost længe": skriv en varighed som 3h eller 90m, eller "off".',
+    ]);
+  });
+
   it('only reads lines that start with /factory', () => {
     expect(parse('Svar med `/factory approve #12` eller\n  /factory pause').commands).toEqual([
       { command: 'pause' },
@@ -65,7 +76,7 @@ describe('parseChatOps', () => {
     );
     expect(commands).toEqual([]);
     expect(errors).toEqual([
-      '"/factory dance": ukendt kommando "dance". Kendte: pause, resume, status, halt, stop, retry, hold, focus, workflow, reject, approve.',
+      '"/factory dance": ukendt kommando "dance". Kendte: pause, resume, status, halt, stop, retry, hold, focus, workflow, reject, approve, boost.',
       '"/factory stop": /factory stop needs an issue, e.g. #12',
       '"/factory pause now": uventede ord: now.',
       '"/factory": mangler en kommando.',

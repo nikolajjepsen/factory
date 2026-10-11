@@ -5,7 +5,7 @@ export type TurnOutcome =
   /** `output` is an AgentReport for write tasks and the `readOnly.schema` result otherwise. */
   | { kind: 'completed'; output: unknown; tokens?: TokenUsage }
   | { kind: 'interrupted'; tokens?: TokenUsage }
-  | { kind: 'failed'; error: string; tokens?: TokenUsage };
+  | { kind: 'failed'; error: string; tokens?: TokenUsage; quotaExhausted?: true };
 
 /**
  * Commits whatever the agent left in the worktree and builds the RunReport. Shared by all
@@ -41,7 +41,7 @@ export async function finishRun(task: RunTask, outcome: TurnOutcome): Promise<Ru
     case 'failed':
       status = 'failed';
       summary = outcome.error;
-      message = `WIP: ${task.id} (failed)`;
+      message = `WIP: ${task.id} (${outcome.quotaExhausted ? 'quota' : 'failed'})`;
       break;
   }
 
@@ -60,6 +60,7 @@ export async function finishRun(task: RunTask, outcome: TurnOutcome): Promise<Ru
   };
   if (outcome.tokens) report.tokens = outcome.tokens;
   if (outcome.kind === 'completed') report.output = outcome.output;
+  if (outcome.kind === 'failed' && outcome.quotaExhausted) report.quotaExhausted = true;
   return report;
 }
 
@@ -74,5 +75,6 @@ async function finishReadOnly(task: RunTask, outcome: TurnOutcome): Promise<RunR
   };
   if (outcome.tokens) report.tokens = outcome.tokens;
   if (outcome.kind === 'completed') report.output = outcome.output;
+  if (outcome.kind === 'failed' && outcome.quotaExhausted) report.quotaExhausted = true;
   return report;
 }
