@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
+import { createApi, listen } from '../api/server.js';
+import { loadOrCreateToken } from '../api/token.js';
 import { loadFactoryConfig } from '../config/factoryConfig.js';
 import { factoryHome, factoryRoot, loadProject, loadProjects } from '../config/projects.js';
 import { GraphQLBoard } from '../github/board.js';
@@ -170,13 +172,27 @@ export async function runDaemon(options: { once: boolean }, signal: AbortSignal)
         await daemon.tick();
         await daemon.heartbeat();
       } else {
-        await daemon.run(signal);
+        const { token } = await apiToken();
+        const server = await listen(createApi({ daemon, token }), config.api.port);
+        process.stdout.write(
+          `API: http://127.0.0.1:${String(server.port)} (token: factory api-token)\n`,
+        );
+        try {
+          await daemon.run(signal);
+        } finally {
+          await server.close();
+        }
       }
       await quota.close();
     });
   } finally {
     store.close();
   }
+}
+
+export async function apiToken(): Promise<{ token: string; file: string }> {
+  const file = join(factoryHome(), 'api-token');
+  return { token: await loadOrCreateToken(file), file };
 }
 
 export function installService(): Promise<string> {

@@ -32,6 +32,7 @@ pnpm factory log --project ekvilibrium --issue 1   # forsøgsloggen: agent-turns
 pnpm factory workflow validate                     # tjek workflow-filerne
 pnpm factory daemon                                # kør fabrikken i forgrunden
 pnpm factory install-service                       # kør den døgnet rundt som launchd-agent
+pnpm factory api-token                             # tokenet til daemonens API på 127.0.0.1:4712
 pnpm format             # ret formatering med Prettier
 ```
 
@@ -57,12 +58,14 @@ Fabrikken ændrer aldrig selv CI-konfiguration eller branch protection. En PR, d
 - `docs/codex-app-server.md` – protokollen og klienten mod `codex app-server`
 - `docs/runner.md` – runner-kontrakten, og hvordan et issue bliver til en PR
 - `docs/workflows.md` – workflow-filer, ordforrådet og motoren
-- `docs/daemon.md` – daemonen: boardet, heartbeat, ChatOps, nødbremse og launchd
+- `docs/daemon.md` – daemonen: boardet, kvote, heartbeat, ChatOps, nødbremse og launchd
+- `docs/api.md` – daemonens HTTP-API: tilstand, events og kommandoer
 - `projects.yml` – de projekter, fabrikken arbejder på (`repo` og lokal `path`)
-- `factory.yml` – fabrikkens konfiguration: board, ejer, status-repo, runner, grænser og kvoteregler
+- `factory.yml` – fabrikkens konfiguration: board, ejer, status-repo, runner, grænser, kvoteregler og API-port
 - `CHANGELOG.md` – ændringer i adfærd
 - `daemon/` – kø, tilstandsmaskine, heartbeat, kvote og CLI'en (`daemon/cli/`)
 - `runners/` – motor-adaptere (Codex først)
+- `packages/protocol/` – zod-skemaer for tilstand, events og kommandoer, delt af daemon og dashboard
 - `agents/baseline/` – generalist-agenter pr. rolle
 - `dashboard/` – kontrolrummet som container
 - `templates/` – skabeloner til produktafdelingen

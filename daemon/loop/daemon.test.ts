@@ -458,6 +458,50 @@ describe('Daemon: quota policy', () => {
   });
 });
 
+describe('Daemon: live state for the API', () => {
+  it("re-reads the quota after a step, counts today's PRs and tells listeners", async () => {
+    const quota = new FakeQuota(quotaSnapshot(10, 20));
+    const h = await harness({ quota });
+    let changes = 0;
+    const lines: string[] = [];
+    h.daemon.onChange(() => changes++);
+    h.daemon.onLog((line) => lines.push(line));
+    quota.read = () => {
+      quota.reads++;
+      // The step costs 4 % of the 5-hour window.
+      return Promise.resolve(quota.reads === 1 ? quotaSnapshot(10, 20) : quotaSnapshot(14, 21));
+    };
+    expect(await h.daemon.tick()).toBe('worked');
+    expect(quota.reads).toBe(2);
+    expect(h.daemon.state().quota?.snapshot.fiveHour.usedPercent).toBe(14);
+    expect(h.daemon.state().today).toEqual({ prs: 1, merged: 0, firstPass: 100 });
+    expect(changes).toBeGreaterThan(0);
+    expect(lines.some((l) => l.includes('Starter workflow'))).toBe(true);
+
+    h.github.mergedPrs.add(5);
+    await h.daemon.heartbeat();
+    expect(h.daemon.state().today.merged).toBe(1);
+  });
+});
+
+describe('Daemon: commands from the API', () => {
+  it('switches to paused and back at once, and logs the command', async () => {
+    const h = await harness({ items: [] });
+    await h.daemon.tick();
+    expect(await h.daemon.execute({ command: 'pause' })).toEqual({
+      text: 'Fabrikken holder pause.',
+      reply: false,
+    });
+    expect(h.daemon.state()).toMatchObject({
+      mode: 'paused',
+      reason: 'Sat på pause med /factory pause.',
+    });
+    await h.daemon.execute({ command: 'resume' });
+    expect(h.daemon.state()).toMatchObject({ mode: 'idle', reason: null });
+    expect(h.lines.filter((l) => l.includes('Kommando /factory'))).toHaveLength(2);
+  });
+});
+
 describe('Daemon: /factory boost', () => {
   it('sets the quota rules aside until midnight, then they apply again', async () => {
     const quota = new FakeQuota(quotaSnapshot(90, 40));

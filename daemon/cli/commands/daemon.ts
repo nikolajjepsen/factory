@@ -4,6 +4,8 @@ export interface DaemonCommandDeps {
   runDaemon: (options: { once: boolean }, signal: AbortSignal) => Promise<void>;
   installService: () => Promise<string>;
   uninstallService: () => Promise<void>;
+  /** The daemon API's bearer token, created on first use. */
+  apiToken: () => Promise<{ token: string; file: string }>;
   /** Subscribes to SIGINT and SIGTERM. Returns an unsubscribe function. */
   onShutdown: (handler: () => void) => () => void;
   stdout: (text: string) => void;
@@ -25,6 +27,14 @@ export function registerDaemonCommands(program: Command, deps: DaemonCommandDeps
       } finally {
         unsubscribe();
       }
+    });
+
+  program
+    .command('api-token')
+    .description('vis bearer-tokenet til daemonens API (oprettes første gang)')
+    .action(async () => {
+      const { token } = await deps.apiToken();
+      deps.stdout(`${token}\n`);
     });
 
   program

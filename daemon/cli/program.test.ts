@@ -57,6 +57,7 @@ async function run(args: string[], deps: Partial<CliDeps> = {}) {
     runDaemon: () => Promise.resolve(),
     installService: () => Promise.resolve('/Library/LaunchAgents/x.plist'),
     uninstallService: () => Promise.resolve(),
+    apiToken: () => Promise.resolve({ token: 'abc123', file: '/home/.ai-factory/api-token' }),
     onShutdown: () => () => undefined,
     now: () => new Date('2026-10-11T16:21:33.000Z'),
     timeZone: 'Europe/Copenhagen',
@@ -481,6 +482,10 @@ describe('factory daemon and services', () => {
       runDaemon: (options) => (calls.push(options.once), Promise.resolve()),
     });
     expect(calls).toEqual([false, true]);
+  });
+
+  it('prints the API token', async () => {
+    expect((await run(['api-token'])).stdout).toBe('abc123\n');
   });
 
   it('installs and uninstalls the launchd agent', async () => {

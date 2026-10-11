@@ -368,7 +368,7 @@ export class WorkflowEngine {
             title: issue.title,
             body: pullRequestBody(issue, report, { role: effective.agent, runner: runner.name }),
           }));
-        run.pr = { number: pr.number, url: pr.html_url };
+        run.pr = { number: pr.number, url: pr.html_url, openedAt: this.deps.now().toISOString() };
         this.#status(run, `PR: ${pr.html_url}`);
       }
     }

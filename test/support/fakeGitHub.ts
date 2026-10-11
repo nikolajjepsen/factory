@@ -70,6 +70,11 @@ export class FakeGitHub implements GitHub {
   findOpenPullRequest() {
     return Promise.resolve(this.existingPr);
   }
+  /** PR numbers that count as merged. */
+  mergedPrs = new Set<number>();
+  isPullRequestMerged(_repo: string, pr: number) {
+    return Promise.resolve(this.mergedPrs.has(pr));
+  }
   createPullRequest(repo: string, pr: CreatePullRequest) {
     this.created.push({ repo, pr });
     this.existingPr = { number: 5, html_url: 'https://github.com/o/demo/pull/5', state: 'open' };

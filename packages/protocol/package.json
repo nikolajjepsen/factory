@@ -1,0 +1,13 @@
+{
+  "name": "@ai-factory/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "zod-skemaer for daemonens tilstand, events og kommandoer. Deles af daemonen og kontrolrummet.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

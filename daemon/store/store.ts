@@ -41,6 +41,8 @@ export interface Store {
     runId?: string;
     project?: string;
     issue?: number;
+    /** Only attempts logged at or after this ISO timestamp. */
+    since?: string;
   }): (AttemptRecord & { createdAt: string })[];
   addDecision(decision: Omit<Decision, 'id'>): void;
   /** Takes (and marks as used) the oldest unused decision of this kind for the issue. */
@@ -195,7 +197,7 @@ export class SqliteStore implements Store {
       .run({ ...record, passed: record.passed ? 1 : 0, createdAt: this.#timestamp() });
   }
 
-  attempts(filter: { runId?: string; project?: string; issue?: number }) {
+  attempts(filter: { runId?: string; project?: string; issue?: number; since?: string }) {
     const where: string[] = [];
     const params: (string | number)[] = [];
     if (filter.runId !== undefined) {
@@ -209,6 +211,10 @@ export class SqliteStore implements Store {
     if (filter.issue !== undefined) {
       where.push('issue = ?');
       params.push(filter.issue);
+    }
+    if (filter.since !== undefined) {
+      where.push('created_at >= ?');
+      params.push(filter.since);
     }
     const sql = `SELECT * FROM attempts ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id`;
     return (this.#db.prepare(sql).all(...params) as AttemptRow[]).map((row) => ({

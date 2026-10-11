@@ -101,7 +101,11 @@ describe('WorkflowEngine: baseline feature workflow', () => {
     const run = await settle(h);
     expect(run.status).toBe('done');
     expect(run.workflow).toBe('feature');
-    expect(run.pr).toEqual({ number: 5, url: 'https://github.com/o/demo/pull/5' });
+    expect(run.pr).toEqual({
+      number: 5,
+      url: 'https://github.com/o/demo/pull/5',
+      openedAt: '2026-10-11T18:00:00.000Z',
+    });
     expect(h.workspace.pushed).toBe(1);
     expect(h.github.labelsOf(5)).toEqual([LABELS.readyToMerge]);
     expect(h.github.comments.at(-1)?.body).toMatch(/^\*\*Klar til merge\.\*\*/);

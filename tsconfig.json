@@ -17,5 +17,5 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true
   },
-  "include": ["daemon", "runners", "test", "*.ts"]
+  "include": ["daemon", "runners", "packages", "test", "*.ts"]
 }

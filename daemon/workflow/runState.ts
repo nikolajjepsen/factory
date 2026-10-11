@@ -36,7 +36,8 @@ export interface RunState {
   gateIndex: number;
   /** When the run started waiting on a human gate. */
   waitingSince?: string;
-  pr?: { number: number; url: string };
+  /** `openedAt` is unset for PRs opened before M5a. */
+  pr?: { number: number; url: string; openedAt?: string };
   /** The last agent summary, for the PR body and notifications. */
   lastSummary?: string;
   /** Why the run is blocked or stopped, in Danish. */

@@ -1,3 +1,4 @@
+import type { PacingStatus } from '@ai-factory/protocol';
 import { z } from 'zod';
 import type { FactoryConfig } from '../config/factoryConfig.js';
 import { percentLeft, type QuotaSnapshot } from './quota.js';
@@ -35,7 +36,7 @@ export interface QuotaBlock {
 export interface QuotaStatus {
   snapshot: QuotaSnapshot;
   /** Unset when pacing is off or the weekly reset time is unknown. */
-  pacing?: { day: string; budget: number; usedToday: number };
+  pacing?: PacingStatus;
   /** Unset when work may go on. */
   block?: QuotaBlock;
 }

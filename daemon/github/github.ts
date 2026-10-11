@@ -96,6 +96,7 @@ export interface GitHub {
   getIssue(repo: string, number: number): Promise<Issue>;
   findOpenPullRequest(repo: string, head: string): Promise<PullRequest | undefined>;
   createPullRequest(repo: string, pr: CreatePullRequest): Promise<PullRequest>;
+  isPullRequestMerged(repo: string, pr: number): Promise<boolean>;
   getDefaultBranch(repo: string): Promise<string>;
   addLabels(repo: string, issue: number, labels: string[]): Promise<void>;
   /** Removing a label the issue does not have is not an error. */
@@ -179,6 +180,11 @@ export class OctokitGitHub implements GitHub {
     });
     const first = data[0];
     return first ? PullRequest.parse(first) : undefined;
+  }
+
+  async isPullRequestMerged(repo: string, pr: number): Promise<boolean> {
+    const { data } = await this.octokit.rest.pulls.get({ ...splitRepo(repo), pull_number: pr });
+    return z.object({ merged: z.boolean() }).parse(data).merged;
   }
 
   async createPullRequest(repo: string, pr: CreatePullRequest): Promise<PullRequest> {

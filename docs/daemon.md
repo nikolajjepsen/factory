@@ -34,7 +34,7 @@ Grunden vises i køen i statusissuet.
 
 ## Heartbeat
 
-Hvert minut redigerer daemonen det fastgjorte issue "Factory Status" i `status_repo`. Det oprettes og fastgøres første gang. Brødteksten er en dansk oversigt (tilstand, heartbeat, aktuel opgave, kø, venter på dig, seneste log) og hele tilstanden som JSON i en HTML-kommentar, som dashboardets `github`-tilstand (M5b) læser.
+Hvert minut redigerer daemonen det fastgjorte issue "Factory Status" i `status_repo`. Det oprettes og fastgøres første gang. Brødteksten er en dansk oversigt (tilstand, heartbeat, næste start, kvote, dagens tal, aktuel opgave, kø, venter på dig, seneste log) og hele tilstanden som JSON i en HTML-kommentar, som dashboardets `github`-tilstand (M5b) læser.
 
 ## Kvote
 
@@ -72,6 +72,8 @@ Gælder flere, bruges den seneste. En agent-turn, der allerede kører, får lov 
 `factory run` følger ikke kvotereglerne. Du starter den selv. Melder Codex "usage limit", stopper den med en besked om, at kørslen er gemt.
 
 ## ChatOps
+
+Samme kommandoer kan sendes til daemonens API (`POST /commands`, se `docs/api.md`). Begge veje går gennem én handler.
 
 Kun kommentarer fra `owner_login` udføres. De læses fra statusissuets repo og alle projektrepoer. Hver kommando kvitteres med en +1-reaktion. `status` og fejl besvares med en kommentar.
 

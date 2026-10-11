@@ -1,6 +1,7 @@
 import { openCodexQuotaSource } from '../../runners/codex/codexQuotaSource.js';
 import { createProgram } from './program.js';
 import {
+  apiToken,
   attempts,
   clientInfo,
   installService,
@@ -21,4 +22,5 @@ await createProgram({
   runDaemon,
   installService,
   uninstallService,
+  apiToken,
 }).parseAsync(process.argv);

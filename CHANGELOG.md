@@ -4,6 +4,11 @@
 
 ### Tilføjet
 
+- M5a: Daemonens API på `127.0.0.1:4712` (`api.port` i `factory.yml`): `GET /state`, `GET /events` (SSE med hele tilstanden ved forbindelse og derefter kun ændrede felter og nye loglinjer) og `POST /commands` gennem samme handler som ChatOps. Kræver bearer-tokenet fra `~/.ai-factory/api-token` (`0600`), ellers `401`. `factory api-token` viser det. Se `docs/api.md`.
+- M5a: Pakken `packages/protocol` (`@ai-factory/protocol`) med zod-skemaer for tilstand, events og kommandoer. Repoet er nu et pnpm-workspace.
+- M5a: Tilstanden har `today` (PR'er i dag, merged, first-pass), og statusissuet viser dem. `reason` er altid med (`null` uden grund).
+- M5a: Kvoten læses igen efter hvert trin, og Codex' push-opdateringer flettes ind, så kvotetallene er friske.
+- M5a: `pause` og `resume` skifter tilstand med det samme, alle kommandoer logges ét sted, og en kommando vækker en daemon, der sover mellem gennemløb.
 - M4: Kvotepolitik. Daemonen læser Codex-kvoten før hvert trin og hvert 5. minut, mens den venter, og går i `waiting_quota` med `nextStart`, når 5-timersvinduet er under `pause_below_5h`, ugekvoten er nede på `reserve_for_me`, eller dagens pacing-budget er brugt. En kørende turn får lov at blive færdig. Se `docs/daemon.md`.
 - M4: Pacing `even` fordeler ugekvoten jævnt over tiden til nulstilling. En dag, der starter midt i døgnet, får kun andelen af sine resterende timer. Budgettet fastsættes ved dagens start og gemmes.
 - M4: Sikkerhedsnet. En Codex-turn, der stopper på "usage limit" (`codexErrorInfo: "usageLimitExceeded"`), gemmes som `WIP: … (quota)`. Den tæller ikke som et fejlet forsøg og bruger ikke stigen. Trinnet tages om, når kvoten er tilbage.

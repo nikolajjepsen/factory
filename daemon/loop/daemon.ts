@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import type { FactoryConfig } from '../config/factoryConfig.js';
 import type { Project } from '../config/projects.js';
+import type { CommandResult, QuotaSnapshot, TodayStats } from '@ai-factory/protocol';
 import { type Command, parseChatOps } from '../control/commands.js';
 import type { Board, BoardItem } from '../github/board.js';
 import { FACTORY_COMMENT_MARKER, type GitHub } from '../github/github.js';
@@ -22,6 +23,7 @@ import { type EngineEvent, LABELS, type WorkflowEngine } from '../workflow/engin
 import type { AgentLibrary } from '../workflow/load.js';
 import type { RunState } from '../workflow/runState.js';
 import { HOLD_LABEL, pickNext } from './picker.js';
+import { prKey, prsOpenedToday, todayStats } from './today.js';
 import type { DaemonMode, FactoryState, QueueEntry, WaitingEntry } from './state.js';
 import { StatusIssue } from './statusIssue.js';
 
@@ -51,11 +53,7 @@ export interface DaemonDeps {
   watchMs?: number;
 }
 
-export interface CommandResult {
-  text: string;
-  /** Whether the text is worth a reply comment (status, errors, notes); otherwise a +1 is enough. */
-  reply: boolean;
-}
+export type { CommandResult } from '@ai-factory/protocol';
 
 const SETTING = {
   paused: 'paused',
@@ -65,6 +63,7 @@ const SETTING = {
   boostUntil: 'quota_boost_until',
 } as const;
 const LOG_LINES = 50;
+const PAUSED_REASON = 'Sat på pause med /factory pause.';
 /** How far back the first comment poll looks, so old commands are not replayed. */
 const FIRST_POLL_LOOKBACK_MS = 10 * 60_000;
 /** Overlap between polls; handled comment ids make it safe. */
@@ -91,6 +90,14 @@ export class Daemon {
   #repos = new Map<string, string>();
   readonly #log: string[] = [];
   #polling = false;
+  /** Aborted by a command, so a sleeping loop reacts at once. */
+  #wake = new AbortController();
+  #heartbeatAt: string | undefined;
+  #today: TodayStats = { prs: 0, merged: 0, firstPass: null };
+  /** `project#pr` of today's PRs found merged, so each is looked up until it merges. */
+  readonly #merged = new Set<string>();
+  readonly #changeListeners = new Set<() => void>();
+  readonly #logListeners = new Set<(line: string) => void>();
   #quota: QuotaStatus | undefined;
   #quotaReadAt = 0;
   /** Set when Codex reported a usage limit the snapshot did not show: no new turns before `until`. */
@@ -141,8 +148,8 @@ export class Daemon {
     }
     return {
       mode: this.#mode,
-      ...(this.#reason && { reason: this.#reason }),
-      heartbeat: now().toISOString(),
+      reason: this.#reason ?? null,
+      heartbeat: this.#heartbeatAt ?? now().toISOString(),
       nextStart: this.#mode === 'waiting_quota' ? this.#nextStart : null,
       quota: this.#quota
         ? {
@@ -151,6 +158,7 @@ export class Daemon {
           }
         : null,
       quotaOverrideUntil: this.#boostUntil(),
+      today: this.#today,
       focus: this.#focus,
       current: this.#current,
       queue: this.#queue,
@@ -159,8 +167,21 @@ export class Daemon {
     };
   }
 
+  /** Called after anything in the state may have changed. Returns an unsubscribe function. */
+  onChange(listener: () => void): () => void {
+    this.#changeListeners.add(listener);
+    return () => this.#changeListeners.delete(listener);
+  }
+
+  /** Called with every new log line. Returns an unsubscribe function. */
+  onLog(listener: (line: string) => void): () => void {
+    this.#logListeners.add(listener);
+    return () => this.#logListeners.delete(listener);
+  }
+
   /** Feeds engine events into the log and the "working on" status. */
   handleEngineEvent(event: EngineEvent): void {
+    this.#changed();
     const target = `${event.run.project}#${String(event.run.issue)}`;
     if (
       this.#current &&
@@ -200,7 +221,7 @@ export class Daemon {
     await this.pollCommands();
     const halt = await this.#haltReason();
     if (halt) return this.#pause(halt);
-    if (this.#paused) return this.#pause('Sat på pause med /factory pause.');
+    if (this.#paused) return this.#pause(PAUSED_REASON);
 
     for (const run of store.listRuns(['waiting'])) {
       await engine.advance(run);
@@ -240,6 +261,10 @@ export class Daemon {
   async run(signal: AbortSignal): Promise<void> {
     const { idleMs = 60_000, heartbeatMs = 60_000, watchMs = 30_000 } = this.#deps;
     this.#write('Daemonen starter.');
+    // Codex pushes quota updates during turns; they keep the shown numbers fresh.
+    const unsubscribeQuota = this.#deps.quota?.subscribe((snapshot) => {
+      this.#applyQuota(snapshot);
+    });
     await this.heartbeat();
     const heartbeat = setInterval(() => void this.heartbeat(), heartbeatMs);
     const watch = setInterval(() => void this.#watch(), watchMs);
@@ -258,10 +283,14 @@ export class Daemon {
         // The signal may have fired during tick(); TypeScript's narrowing cannot see that.
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (result !== 'worked' && !signal.aborted) {
-          await this.#deps.sleep(idleMs, signal).catch(() => undefined);
+          this.#wake = new AbortController();
+          await this.#deps
+            .sleep(idleMs, AbortSignal.any([signal, this.#wake.signal]))
+            .catch(() => undefined);
         }
       }
     } finally {
+      unsubscribeQuota?.();
       clearInterval(heartbeat);
       clearInterval(watch);
       signal.removeEventListener('abort', onAbort);
@@ -271,10 +300,13 @@ export class Daemon {
   }
 
   async heartbeat(): Promise<void> {
+    this.#heartbeatAt = this.#deps.now().toISOString();
     // Keep the quota shown in the status fresh while nothing else reads it.
     if (this.#deps.quota && this.#deps.now().getTime() - this.#quotaReadAt >= QUOTA_POLL_MS) {
       await this.#readQuota();
     }
+    await this.#refreshToday(true);
+    this.#changed();
     try {
       await this.#statusIssue.publish(this.state());
     } catch (error) {
@@ -314,7 +346,6 @@ export class Daemon {
           const replies = errors.map((e) => `Kunne ikke forstå ${e}`);
           for (const command of commands) {
             const result = await this.execute(command);
-            this.#write(`Kommando /factory ${command.command}: ${result.text}`);
             if (result.reply) replies.push(result.text);
           }
           await github.reactToComment(repo, comment.id);
@@ -332,25 +363,31 @@ export class Daemon {
     }
   }
 
-  /** The single control system: ChatOps now, the daemon API from M5a. */
+  /** The single control system: ChatOps comments and the daemon API (`POST /commands`). */
   async execute(command: Command): Promise<CommandResult> {
+    const result = await this.#execute(command);
+    this.#write(`Kommando /factory ${command.command}: ${result.text}`);
+    this.#wake.abort();
+    return result;
+  }
+
+  async #execute(command: Command): Promise<CommandResult> {
     const { store, github, engine } = this.#deps;
     const done = (text: string, reply = false): CommandResult => ({ text, reply });
     try {
       switch (command.command) {
         case 'pause':
           store.setSetting(SETTING.paused, 'true');
-          return done(
-            this.#currentAbort
-              ? 'Holder pause efter det aktuelle trin.'
-              : 'Fabrikken holder pause.',
-          );
+          if (this.#currentAbort) return done('Holder pause efter det aktuelle trin.');
+          this.#pause(PAUSED_REASON);
+          return done('Fabrikken holder pause.');
         case 'resume': {
           store.setSetting(SETTING.paused, undefined);
           const halt = await this.#haltReason();
-          return halt
-            ? done(`Genoptaget, men nødbremsen er stadig aktiv: ${halt}`, true)
-            : done('Fabrikken kører igen.');
+          if (halt) return done(`Genoptaget, men nødbremsen er stadig aktiv: ${halt}`, true);
+          // The next pass decides between running, idle and waiting for quota.
+          if (this.#mode === 'paused') this.#setMode('idle');
+          return done('Fabrikken kører igen.');
         }
         case 'halt':
           await writeFile(this.#deps.haltFile, `Nødbremse sat ${this.#deps.now().toISOString()}\n`);
@@ -560,6 +597,36 @@ export class Daemon {
       this.#currentAbort = undefined;
       this.#current = null;
     }
+    // Show what the step cost and did right away, not at the next 5-minute read.
+    if (this.#mode !== 'waiting_quota') await this.#readQuota();
+    await this.#refreshToday(false);
+    this.#changed();
+  }
+
+  /** Today's numbers. Merges are looked up on GitHub only when `checkMerged` is set. */
+  async #refreshToday(checkMerged: boolean): Promise<void> {
+    const { store, github, now, timeZone } = this.#deps;
+    const runs = store.listRuns(['active', 'waiting', 'stopped', 'done', 'blocked']);
+    if (checkMerged) {
+      const repos = this.#repos;
+      for (const run of prsOpenedToday({ runs, now: now(), timeZone })) {
+        const repo = repos.get(run.project);
+        if (!run.pr || !repo || this.#merged.has(prKey(run))) continue;
+        try {
+          if (await github.isPullRequestMerged(repo, run.pr.number)) this.#merged.add(prKey(run));
+        } catch {
+          // A failed lookup only leaves the merged count behind until the next heartbeat.
+        }
+      }
+    }
+    const since = new Date(now().getTime() - 26 * 60 * 60_000).toISOString();
+    this.#today = todayStats({
+      runs,
+      attempts: store.attempts({ since }),
+      merged: this.#merged,
+      now: now(),
+      timeZone,
+    });
   }
 
   /**
@@ -605,28 +672,34 @@ export class Daemon {
 
   /** Reads the quota and applies the rules. A failed read lets work go on; the safety net remains. */
   async #readQuota(): Promise<void> {
-    const { quota, store, config, now, timeZone } = this.#deps;
+    const { quota, now } = this.#deps;
     if (!quota) return;
     this.#quotaReadAt = now().getTime();
     try {
-      const snapshot = await quota.read();
-      const saved = PacingDay.safeParse(JSON.parse(store.getSetting(SETTING.pacingDay) ?? 'null'));
-      const { status, day } = evaluateQuota({
-        snapshot,
-        rules: config.quota,
-        day: saved.success ? saved.data : undefined,
-        now: now(),
-        timeZone,
-        override: this.#boostUntil() !== null,
-      });
-      if (day) store.setSetting(SETTING.pacingDay, JSON.stringify(day));
-      this.#quota = status;
+      this.#applyQuota(await quota.read());
     } catch (error) {
       this.#quota = undefined;
       this.#write(
         `Kvoten kunne ikke læses: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /** Applies the rules to a snapshot, from a read or a push update. */
+  #applyQuota(snapshot: QuotaSnapshot): void {
+    const { store, config, now, timeZone } = this.#deps;
+    const saved = PacingDay.safeParse(JSON.parse(store.getSetting(SETTING.pacingDay) ?? 'null'));
+    const { status, day } = evaluateQuota({
+      snapshot,
+      rules: config.quota,
+      day: saved.success ? saved.data : undefined,
+      now: now(),
+      timeZone,
+      override: this.#boostUntil() !== null,
+    });
+    if (day) store.setSetting(SETTING.pacingDay, JSON.stringify(day));
+    this.#quota = status;
+    this.#changed();
   }
 
   /** While a step runs: interrupt it on halt, and read commands (for stop and hold). */
@@ -726,5 +799,11 @@ export class Daemon {
     this.#log.push(stamped);
     if (this.#log.length > LOG_LINES) this.#log.shift();
     this.#deps.log?.(stamped);
+    for (const listener of this.#logListeners) listener(stamped);
+    this.#changed();
+  }
+
+  #changed(): void {
+    for (const listener of this.#changeListeners) listener();
   }
 }

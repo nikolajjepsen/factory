@@ -5,11 +5,13 @@ import { parseStatusIssue, renderStatusIssue, StatusIssue } from './statusIssue.
 
 const state: FactoryState = {
   mode: 'running',
+  reason: null,
   heartbeat: '2026-10-11T18:00:00.000Z',
   nextStart: null,
   quota: null,
   quotaOverrideUntil: null,
   focus: 'ekvilibrium',
+  today: { prs: 4, merged: 2, firstPass: 71 },
   current: {
     project: 'ekvilibrium',
     issue: 6,
@@ -42,6 +44,7 @@ describe('renderStatusIssue', () => {
     const body = renderStatusIssue(state, 'Europe/Copenhagen');
     expect(body).toContain('**Tilstand:** Kører');
     expect(body).toContain('**Heartbeat:** 2026-10-11 20:00:00');
+    expect(body).toContain("**I dag:** 4 PR'er · 2 merged · first-pass 71 %");
     expect(body).toContain(
       '[ekvilibrium#6](https://github.com/o/ekvilibrium/issues/6) Tilføj sum – workflow `feature`, stage `implement` (code), forsøg 2',
     );

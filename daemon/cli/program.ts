@@ -15,7 +15,7 @@ export interface CliDeps
     Pick<RunCommandDeps, 'runIssue' | 'runWorkflow'>,
     Pick<WorkflowCommandDeps, 'validateWorkflows'>,
     Pick<LogCommandDeps, 'attempts'>,
-    Pick<DaemonCommandDeps, 'runDaemon' | 'installService' | 'uninstallService'>,
+    Pick<DaemonCommandDeps, 'runDaemon' | 'installService' | 'uninstallService' | 'apiToken'>,
     Partial<Pick<DaemonCommandDeps, 'onShutdown'>>,
     Partial<Pick<QuotaCommandDeps, 'now' | 'timeZone'>>,
     Partial<Pick<RunCommandDeps, 'onInterrupt' | 'forceExit' | 'setExitCode'>> {
@@ -75,6 +75,7 @@ export function createProgram(deps: CliDeps): Command {
     runDaemon: deps.runDaemon,
     installService: deps.installService,
     uninstallService: deps.uninstallService,
+    apiToken: deps.apiToken,
     onShutdown: deps.onShutdown ?? onSigintOrSigterm,
     stdout,
   });

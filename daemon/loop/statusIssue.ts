@@ -52,6 +52,10 @@ export function renderStatusIssue(state: FactoryState, timeZone?: string): strin
     );
   }
   if (state.focus) lines.push(`**Fokus:** ${state.focus}`);
+  const { prs, merged, firstPass } = state.today;
+  lines.push(
+    `**I dag:** ${String(prs)} PR'er · ${String(merged)} merged${firstPass === null ? '' : ` · first-pass ${String(firstPass)} %`}`,
+  );
   lines.push('', '### Arbejder på');
   const c = state.current;
   lines.push(

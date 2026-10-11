@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { parse as parseYaml } from 'yaml';
+import { DEFAULT_API_PORT } from '@ai-factory/protocol';
 import { z } from 'zod';
 
 const Repo = z.string().regex(/^[\w.-]+\/[\w.-]+$/, 'must look like owner/name');
@@ -40,6 +41,12 @@ export const FactoryConfig = z.object({
       reserve_for_me: Percent.default(0),
       /** `even`: spread the weekly quota evenly over the days until it resets. */
       pacing: z.enum(['even', 'none']).default('even'),
+    })
+    .prefault({}),
+  api: z
+    .object({
+      /** The daemon API listens on 127.0.0.1 at this port. */
+      port: z.number().int().min(1).max(65535).default(DEFAULT_API_PORT),
     })
     .prefault({}),
 });
